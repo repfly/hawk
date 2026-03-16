@@ -1,0 +1,26 @@
+# Build artifacts
+/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test databases and temp output
+community_notes_db/
+tmp_news_analysis/
+
+# Test fixtures (large CSVs)
+tests/fixtures/
+
+# Datasets (too large for repo)
+News_Category_Dataset_v3.json
+
+# Claude Code
+.claude/
+
+# Internal design docs
+Resources/

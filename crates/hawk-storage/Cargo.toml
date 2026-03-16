@@ -1,0 +1,23 @@
+[package]
+name = "hawk-storage"
+description = "Columnar storage layer for the Hawk analytics engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+hawk-core = { path = "../hawk-core", version = "0.1.0" }
+hawk-math = { path = "../hawk-math", version = "0.1.0" }
+serde.workspace = true
+serde_json.workspace = true
+bincode = "1"
+zstd = "0.13"
+thiserror.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+memmap2.workspace = true
+byteorder.workspace = true
+parking_lot.workspace = true
+fs4.workspace = true

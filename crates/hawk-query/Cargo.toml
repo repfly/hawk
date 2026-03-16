@@ -1,0 +1,22 @@
+[package]
+name = "hawk-query"
+description = "Query engine for the Hawk analytics engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+hawk-core = { path = "../hawk-core", version = "0.1.0" }
+hawk-math = { path = "../hawk-math", version = "0.1.0" }
+hawk-storage = { path = "../hawk-storage", version = "0.1.0" }
+anyhow.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+lru.workspace = true
+parking_lot.workspace = true
+
+[dev-dependencies]
+hawk-ingest = { path = "../hawk-ingest" }

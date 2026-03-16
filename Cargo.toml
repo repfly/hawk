@@ -1,0 +1,32 @@
+[workspace]
+members = [
+    "crates/hawk-core",
+    "crates/hawk-math",
+    "crates/hawk-storage",
+    "crates/hawk-ingest",
+    "crates/hawk-query",
+    "crates/hawk-sql",
+    "crates/hawk-server",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Hawk Contributors"]
+repository = "https://github.com/repfly/hawk"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+csv = "1"
+memmap2 = "0.9"
+byteorder = "1"
+parking_lot = "0.12"
+fs4 = "0.9"
+lru = "0.12"
+log = "0.4"
