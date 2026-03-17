@@ -26,7 +26,7 @@ U.S. NEWS           +0.1724  (0.000 → 0.172)  contrib=0.0862
 
 1. **Define** variables (categorical or continuous) and dimensions (e.g., time)
 2. **Ingest** data from CSV, JSON, or Parquet -- Hawk builds histograms and contingency tables
-3. **Query** the distributions directly using a SQL-like language, Python API, or web UI
+3. **Query** the distributions directly using a SQL-like language or web UI
 
 The database stores only the distribution summaries, not the raw data. Everything is built on entropy and information theory: JSD for comparison, mutual information for association, KL divergence for directionality.
 
@@ -41,37 +41,6 @@ cargo run --release --bin hawk-server -- my_database.db 3000
 
 # Or use the CLI
 cargo run --release --bin hawk -- my_database.db
-```
-
-### Python
-
-```python
-import hawk as hdb
-
-# Create a database and define schema
-db = hdb.create("my_db")
-db.define_variable("category", "categorical", categories=["A", "B", "C"])
-db.define_dimension("time", "date", granularity="yearly")
-
-# Ingest data
-db.ingest("data.csv", {
-    "variables": {"category_col": "category"},
-    "dimensions": {"date_col": "time"},
-})
-
-# Query
-result = db.sql("COMPARE category BETWEEN time:2023 AND time:2024")
-print(result["text"])
-
-# Or get a DataFrame
-df = db.sql_df("COMPARE category ACROSS time")
-```
-
-Auto-ingest without manual schema definition:
-
-```python
-db = hdb.create("my_db")
-db.ingest_auto("data.json")  # infers variable types from the data
 ```
 
 ## Query language
@@ -215,23 +184,6 @@ curl -X POST http://localhost:3000/ingest \
   -d '[{"category": "TECH", "date": "2024-01-15"}, {"category": "SPORTS", "date": "2024-01-16"}]'
 ```
 
-## Python plotting
-
-```python
-import hawk as hdb
-
-db = hdb.open("my_db")
-
-# Diverging bar chart of what changed
-hdb.plot_compare(db, "time:2013", "time:2022", "category")
-
-# Distribution bar chart
-hdb.plot_distribution(db, "time:2022", "category")
-
-# Entropy timeline
-hdb.plot_track(db, "time:2012", "yearly")
-```
-
 ## Storage format
 
 Hawk uses a custom binary format with zstd compression:
@@ -251,8 +203,6 @@ A database that digests 209K news articles (42 categories, 20 authors, 11 years)
 | `dist_index.edb` | Lookup index for (variable, dimension_key) -> distribution |
 | `snapshots.edb` | Historical distribution snapshots |
 
-Backward compatible: reads older JSON (v1) and uncompressed bincode (v2) formats automatically.
-
 ## Architecture
 
 ```
@@ -263,24 +213,31 @@ hawk-ingest      CSV/JSON/Parquet ingestion, rayon parallelism, schema inference
 hawk-query       Query engine: compare, explain, track, pairwise, correlations
 hawk-sql         SQL-like DSL: tokenizer, recursive descent parser, executor
 hawk-server      Web UI: axum + htmx, SVG charts, streaming ingestion endpoint
-hawk-python      PyO3 bindings, pandas/matplotlib integration
 ```
+
+## Using as a library
+
+Add individual crates to your `Cargo.toml`:
+
+```toml
+[dependencies]
+hawk-core = "0.1"
+hawk-storage = "0.1"
+hawk-ingest = "0.1"
+hawk-query = "0.1"
+hawk-sql = "0.1"
+```
+
+All crates are published to [crates.io](https://crates.io) under the `hawk-*` namespace.
 
 ## Building
 
 ```bash
-# Rust (CLI + server)
 cargo build --release
-
-# Python bindings (requires maturin)
-pip install maturin
-maturin develop --manifest-path crates/hawk-python/Cargo.toml
-
-# Run tests
 cargo test
 ```
 
-Requirements: Rust 1.75+, Python 3.9+ (for bindings).
+Requirements: Rust 1.75+
 
 ## License
 
