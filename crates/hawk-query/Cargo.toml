@@ -6,11 +6,12 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+publish = false
 
 [dependencies]
-hawk-core = { path = "../hawk-core", version = "0.1.0" }
-hawk-math = { path = "../hawk-math", version = "0.1.0" }
-hawk-storage = { path = "../hawk-storage", version = "0.1.0" }
+hawk-core = { path = "../hawk-core" }
+hawk-math = { path = "../hawk-math" }
+hawk-storage = { path = "../hawk-storage" }
 anyhow.workspace = true
 serde.workspace = true
 thiserror.workspace = true

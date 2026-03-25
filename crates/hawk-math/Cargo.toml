@@ -6,9 +6,10 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+publish = false
 
 [dependencies]
-hawk-core = { path = "../hawk-core", version = "0.1.0" }
+hawk-core = { path = "../hawk-core" }
 thiserror.workspace = true
 serde.workspace = true
 

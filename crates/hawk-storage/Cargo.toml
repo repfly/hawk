@@ -6,10 +6,11 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+publish = false
 
 [dependencies]
-hawk-core = { path = "../hawk-core", version = "0.1.0" }
-hawk-math = { path = "../hawk-math", version = "0.1.0" }
+hawk-core = { path = "../hawk-core" }
+hawk-math = { path = "../hawk-math" }
 serde.workspace = true
 serde_json.workspace = true
 bincode = "1"

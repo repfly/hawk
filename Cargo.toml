@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/hawk",
     "crates/hawk-core",
     "crates/hawk-math",
     "crates/hawk-storage",

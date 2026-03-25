@@ -499,6 +499,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "hawk-engine"
+version = "0.1.0"
+dependencies = [
+ "hawk-core",
+ "hawk-ingest",
+ "hawk-math",
+ "hawk-query",
+ "hawk-server",
+ "hawk-sql",
+ "hawk-storage",
+]
+
+[[package]]
 name = "hawk-ingest"
 version = "0.1.0"
 dependencies = [

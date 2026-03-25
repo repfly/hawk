@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+publish = false
 
 [features]
 default = []
@@ -13,9 +14,9 @@ parquet = []
 json = []
 
 [dependencies]
-hawk-core = { path = "../hawk-core", version = "0.1.0" }
-hawk-storage = { path = "../hawk-storage", version = "0.1.0" }
-hawk-math = { path = "../hawk-math", version = "0.1.0" }
+hawk-core = { path = "../hawk-core" }
+hawk-storage = { path = "../hawk-storage" }
+hawk-math = { path = "../hawk-math" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
