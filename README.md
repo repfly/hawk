@@ -205,30 +205,37 @@ A database that digests 209K news articles (42 categories, 20 authors, 11 years)
 
 ## Architecture
 
+Single library crate (`hawk-engine`) with modules:
+
 ```
-hawk-core        Types: Distribution, Joint, Schema, DimensionKey
-hawk-math        Entropy, JSD, KL, PSI, Hellinger, MI, NMI, Cramer's V, Wasserstein
-hawk-storage     Binary file storage, zstd compression, mmap reads, locking
-hawk-ingest      CSV/JSON/Parquet ingestion, rayon parallelism, schema inference
-hawk-query       Query engine: compare, explain, track, pairwise, correlations
-hawk-sql         SQL-like DSL: tokenizer, recursive descent parser, executor
-hawk-server      Web UI: axum + htmx, SVG charts, streaming ingestion endpoint
+hawk_engine::core       Types: Distribution, Joint, Schema, DimensionKey
+hawk_engine::math       Entropy, JSD, KL, PSI, Hellinger, MI, NMI, Cramer's V, Wasserstein
+hawk_engine::storage    Binary file storage, zstd compression, mmap reads, locking
+hawk_engine::ingest     CSV/JSON/Parquet ingestion, rayon parallelism, schema inference
+hawk_engine::query      Query engine: compare, explain, track, pairwise, correlations
+hawk_engine::sql        SQL-like DSL: tokenizer, recursive descent parser, executor
 ```
+
+Plus a separate binary crate (`hawk-server`) for the web UI: axum + htmx, SVG charts, streaming ingestion endpoint.
 
 ## Using as a library
 
-Add individual crates to your `Cargo.toml`:
-
 ```toml
 [dependencies]
-hawk-core = "0.1"
-hawk-storage = "0.1"
-hawk-ingest = "0.1"
-hawk-query = "0.1"
-hawk-sql = "0.1"
+hawk-engine = "0.1"
 ```
 
-All crates are published to [crates.io](https://crates.io) under the `hawk-*` namespace.
+```rust
+use hawk_engine::storage::{Database, OpenMode};
+use hawk_engine::query::QueryEngine;
+
+let db = Database::open("my.db", OpenMode::ReadOnly).unwrap();
+let engine = QueryEngine::default();
+let result = engine.compare(&db, "time:2023", "time:2024", None).unwrap();
+println!("JSD = {:.6}", result.jsd);
+```
+
+Published to [crates.io](https://crates.io/crates/hawk-engine).
 
 ## Building
 
