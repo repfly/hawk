@@ -1,5 +1,5 @@
-use hawk_query::QueryEngine;
-use hawk_storage::Database;
+use hawk_engine::query::QueryEngine;
+use hawk_engine::storage::Database;
 
 /// Generate an SVG chart if the query type benefits from visualization.
 pub fn maybe_chart(query: &str, db: &Database, engine: &QueryEngine) -> String {
@@ -112,12 +112,12 @@ pub fn entropy_timeline_svg(data: &[(String, f64, u64)], var: &str, dim: &str) -
 }
 
 fn pairwise_chart(query: &str, db: &Database, engine: &QueryEngine) -> String {
-    let stmt = match hawk_sql::parser::parse(query) {
+    let stmt = match hawk_engine::sql::parser::parse(query) {
         Ok(s) => s,
         Err(_) => return String::new(),
     };
 
-    let hawk_sql::parser::Statement::Pairwise { dimension, variable, metric } = stmt else {
+    let hawk_engine::sql::parser::Statement::Pairwise { dimension, variable, metric } = stmt else {
         return String::new();
     };
 
@@ -225,12 +225,12 @@ pub fn pairwise_heatmap_svg(labels: &[String], matrix: &[Vec<f64>]) -> String {
 }
 
 fn compare_chart(query: &str, db: &Database, engine: &QueryEngine) -> String {
-    let stmt = match hawk_sql::parser::parse(query) {
+    let stmt = match hawk_engine::sql::parser::parse(query) {
         Ok(s) => s,
         Err(_) => return String::new(),
     };
 
-    let hawk_sql::parser::Statement::Compare { variable, ref_a, ref_b, .. } = stmt else {
+    let hawk_engine::sql::parser::Statement::Compare { variable, ref_a, ref_b, .. } = stmt else {
         return String::new();
     };
 
@@ -359,12 +359,12 @@ fn compare_chart(query: &str, db: &Database, engine: &QueryEngine) -> String {
 }
 
 fn track_chart(query: &str, db: &Database, engine: &QueryEngine) -> String {
-    let stmt = match hawk_sql::parser::parse(query) {
+    let stmt = match hawk_engine::sql::parser::parse(query) {
         Ok(s) => s,
         Err(_) => return String::new(),
     };
 
-    let hawk_sql::parser::Statement::Track { reference, granularity, .. } = &stmt else {
+    let hawk_engine::sql::parser::Statement::Track { reference, granularity, .. } = &stmt else {
         return String::new();
     };
 
@@ -391,12 +391,12 @@ fn track_chart(query: &str, db: &Database, engine: &QueryEngine) -> String {
 }
 
 fn rank_chart(query: &str, db: &Database) -> String {
-    let stmt = match hawk_sql::parser::parse(query) {
+    let stmt = match hawk_engine::sql::parser::parse(query) {
         Ok(s) => s,
         Err(_) => return String::new(),
     };
 
-    let hawk_sql::parser::Statement::Rank { variable, dimension, .. } = &stmt else {
+    let hawk_engine::sql::parser::Statement::Rank { variable, dimension, .. } = &stmt else {
         return String::new();
     };
 
@@ -455,16 +455,16 @@ fn rank_chart(query: &str, db: &Database) -> String {
 }
 
 fn show_chart(query: &str, db: &Database) -> String {
-    let stmt = match hawk_sql::parser::parse(query) {
+    let stmt = match hawk_engine::sql::parser::parse(query) {
         Ok(s) => s,
         Err(_) => return String::new(),
     };
 
-    let hawk_sql::parser::Statement::Show { variable, reference, .. } = &stmt else {
+    let hawk_engine::sql::parser::Statement::Show { variable, reference, .. } = &stmt else {
         return String::new();
     };
 
-    let dim_key = hawk_core::dimension_key_from_pairs(std::iter::once((
+    let dim_key = hawk_engine::core::dimension_key_from_pairs(std::iter::once((
         reference.dimension.clone(),
         reference.value.clone(),
     )));
@@ -474,7 +474,7 @@ fn show_chart(query: &str, db: &Database) -> String {
     };
 
     match &dist.repr {
-        hawk_core::DistributionRepr::Categorical { categories, counts, total_count, .. } => {
+        hawk_engine::core::DistributionRepr::Categorical { categories, counts, total_count, .. } => {
             if *total_count == 0 || categories.is_empty() {
                 return String::new();
             }

@@ -9,10 +9,10 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use hawk_ingest::batch_updater::apply_batch;
-use hawk_ingest::column_mapper::map_row;
-use hawk_query::QueryEngine;
-use hawk_storage::{Database, OpenMode};
+use hawk_engine::ingest::batch_updater::apply_batch;
+use hawk_engine::ingest::column_mapper::map_row;
+use hawk_engine::query::QueryEngine;
+use hawk_engine::storage::{Database, OpenMode};
 
 mod templates;
 mod charts;
@@ -91,7 +91,7 @@ async fn handle_query(
     }
 
     let db = state.db.lock().unwrap();
-    match hawk_sql::query(&db, &state.engine, &q) {
+    match hawk_engine::sql::query(&db, &state.engine, &q) {
         Ok(result) => {
             let chart_html = charts::maybe_chart(&q, &db, &state.engine);
             drop(db);
@@ -107,7 +107,6 @@ async fn handle_query(
 async fn overview_fragment(State(state): State<Arc<AppState>>) -> Html<String> {
     let db = state.db.lock().unwrap();
 
-    // Get entropy ranking for first variable
     let schema = db.schema().clone();
     let first_var = schema.first_variable_name().map(ToOwned::to_owned);
     let dims: Vec<String> = schema.dimensions.iter().map(|d| d.name.clone()).collect();
@@ -135,10 +134,6 @@ async fn overview_fragment(State(state): State<Arc<AppState>>) -> Html<String> {
     Html(overview_parts.join("\n"))
 }
 
-// ---------------------------------------------------------------------------
-// POST /ingest endpoint
-// ---------------------------------------------------------------------------
-
 #[derive(Serialize)]
 struct IngestResponse {
     processed: usize,
@@ -151,9 +146,6 @@ struct IngestErrorResponse {
     error: String,
 }
 
-/// Accept a JSON body that is either a single object or an array of objects.
-/// Each object is mapped through the schema's identity mapping and applied
-/// via the batch updater.
 async fn handle_ingest(
     State(state): State<Arc<AppState>>,
     Json(body): Json<Value>,
@@ -186,8 +178,7 @@ async fn handle_ingest(
     let mut db = state.db.lock().unwrap();
     let schema = db.schema().clone();
 
-    // Build an identity mapping from the current schema.
-    let mapping = hawk_ingest::schema_inference::identity_mapping(&schema);
+    let mapping = hawk_engine::ingest::schema_inference::identity_mapping(&schema);
 
     let mut mapped_rows = Vec::with_capacity(records.len());
     for record in &records {

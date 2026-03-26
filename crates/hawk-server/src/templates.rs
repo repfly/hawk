@@ -1,6 +1,6 @@
-use hawk_core::Schema;
-use hawk_sql::formatter::QueryResult;
-use hawk_storage::DatabaseStats;
+use hawk_engine::core::Schema;
+use hawk_engine::sql::formatter::QueryResult;
+use hawk_engine::storage::DatabaseStats;
 
 pub fn index_page(db_path: &str, stats: &DatabaseStats, schema: &Schema) -> String {
     let first_dim_name = schema.dimensions.first().map(|d| d.name.as_str()).unwrap_or("time");
@@ -11,13 +11,13 @@ pub fn index_page(db_path: &str, stats: &DatabaseStats, schema: &Schema) -> Stri
         .iter()
         .map(|v| {
             let detail = match &v.var_type {
-                hawk_core::VariableType::Continuous { bins, range } => {
+                hawk_engine::core::VariableType::Continuous { bins, range } => {
                     let r = range
                         .map(|(a, b)| format!("[{}, {}]", a, b))
                         .unwrap_or_default();
                     format!("continuous &middot; {} bins &middot; {}", bins, r)
                 }
-                hawk_core::VariableType::Categorical {
+                hawk_engine::core::VariableType::Categorical {
                     categories,
                     allow_unknown,
                 } => {

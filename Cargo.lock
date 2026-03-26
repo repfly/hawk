@@ -490,69 +490,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
 
 [[package]]
-name = "hawk-core"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "serde",
- "thiserror",
-]
-
-[[package]]
 name = "hawk-engine"
 version = "0.1.0"
 dependencies = [
- "hawk-core",
- "hawk-ingest",
- "hawk-math",
- "hawk-query",
- "hawk-server",
- "hawk-sql",
- "hawk-storage",
-]
-
-[[package]]
-name = "hawk-ingest"
-version = "0.1.0"
-dependencies = [
  "anyhow",
+ "bincode",
+ "byteorder",
  "chrono",
+ "criterion",
  "csv",
- "hawk-core",
- "hawk-math",
- "hawk-storage",
+ "fs4",
  "log",
+ "lru",
+ "memmap2",
+ "parking_lot",
+ "proptest",
  "rayon",
  "serde",
  "serde_json",
  "thiserror",
-]
-
-[[package]]
-name = "hawk-math"
-version = "0.1.0"
-dependencies = [
- "criterion",
- "hawk-core",
- "proptest",
- "serde",
- "thiserror",
-]
-
-[[package]]
-name = "hawk-query"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "hawk-core",
- "hawk-ingest",
- "hawk-math",
- "hawk-storage",
- "lru",
- "parking_lot",
- "serde",
- "thiserror",
+ "zstd",
 ]
 
 [[package]]
@@ -561,44 +518,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
- "hawk-core",
- "hawk-ingest",
- "hawk-query",
- "hawk-sql",
- "hawk-storage",
+ "hawk-engine",
  "serde",
  "serde_json",
  "tokio",
-]
-
-[[package]]
-name = "hawk-sql"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "hawk-core",
- "hawk-math",
- "hawk-query",
- "hawk-storage",
-]
-
-[[package]]
-name = "hawk-storage"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bincode",
- "byteorder",
- "chrono",
- "fs4",
- "hawk-core",
- "hawk-math",
- "memmap2",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror",
- "zstd",
 ]
 
 [[package]]

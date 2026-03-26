@@ -1,12 +1,6 @@
 [workspace]
 members = [
-    "crates/hawk",
-    "crates/hawk-core",
-    "crates/hawk-math",
-    "crates/hawk-storage",
-    "crates/hawk-ingest",
-    "crates/hawk-query",
-    "crates/hawk-sql",
+    "crates/hawk-engine",
     "crates/hawk-server",
 ]
 resolver = "2"

@@ -1,0 +1,42 @@
+[package]
+name = "hawk-engine"
+description = "Distribution-native analytics engine — compact probabilistic storage with information-theoretic queries"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+parquet = []
+json = []
+
+[[bin]]
+name = "hawk"
+path = "src/bin/hawk.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+csv.workspace = true
+memmap2.workspace = true
+byteorder.workspace = true
+parking_lot.workspace = true
+fs4.workspace = true
+lru.workspace = true
+log.workspace = true
+bincode = "1"
+zstd = "0.13"
+rayon = "1"
+
+[dev-dependencies]
+proptest = "1"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "bench_jsd"
+harness = false

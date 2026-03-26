@@ -12,11 +12,7 @@ name = "hawk-server"
 path = "src/main.rs"
 
 [dependencies]
-hawk-core = { path = "../hawk-core" }
-hawk-ingest = { path = "../hawk-ingest" }
-hawk-query = { path = "../hawk-query" }
-hawk-storage = { path = "../hawk-storage" }
-hawk-sql = { path = "../hawk-sql" }
+hawk-engine = { path = "../hawk-engine" }
 anyhow.workspace = true
 axum = { version = "0.8", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
