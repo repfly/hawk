@@ -16,11 +16,14 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Set version from tag
+      - name: Verify version matches tag
         run: |
           TAG="${GITHUB_REF#refs/tags/v}"
-          echo "Publishing version $TAG"
-          sed -i "s/^version = \".*\"/version = \"$TAG\"/" Cargo.toml
+          TOML_VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          if [ "$TAG" != "$TOML_VERSION" ]; then
+            echo "Tag v$TAG does not match workspace version $TOML_VERSION"
+            exit 1
+          fi
 
       - name: Publish hawk-engine
         env:
