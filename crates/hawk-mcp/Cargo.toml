@@ -1,0 +1,23 @@
+[package]
+name = "hawk-mcp"
+description = "MCP server exposing Hawk distribution analytics to LLM agents"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "hawk-mcp"
+path = "src/main.rs"
+
+[dependencies]
+hawk-engine = { path = "../hawk-engine", features = ["json"] }
+rmcp = { version = "1.4", features = ["server", "transport-io"] }
+tokio = { version = "1", features = ["full"] }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+clap = { version = "4", features = ["derive"] }
+tracing-subscriber = "0.3"
+tracing = "0.1"
