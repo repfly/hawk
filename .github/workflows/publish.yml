@@ -25,4 +25,4 @@ jobs:
       - name: Publish hawk-engine
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish -p hawk-engine
+        run: cargo publish -p hawk-engine --allow-dirty
