@@ -1,8 +1,16 @@
 # Hawk
 
-A distribution-native analytics engine. Instead of storing raw rows, Hawk digests data into compact probability distributions and lets you query them directly -- compare, explain, track drift, and discover correlations, all through an information-theoretic lens.
+The distribution database. Ingest rows, query distributions.
 
-**209,527 rows of news articles compress to 5KB. Queries return in microseconds.**
+Hawk digests data into compact probability distributions, discards the raw rows,
+and lets you query the distributions directly -- compare, explain, track drift,
+and discover correlations through an information-theoretic lens.
+
+- **40,000x compression**: 209,527 news articles --> ~6KB on disk
+- **Microsecond queries**: no row scanning, distribution math runs directly
+- **SQL-like DSL**: 15 commands including COMPARE, EXPLAIN, TRACK, MI, NEAREST
+- **10 built-in metrics**: JSD, KL, PSI, Hellinger, Wasserstein, MI, NMI, Cramer's V, conditional MI, entropy
+- **Distributions-only by default**: raw-log retention is opt-in
 
 ```
 hawk> COMPARE category BETWEEN time:2013 AND time:2022
@@ -21,6 +29,57 @@ POLITICS            +0.2854  (0.000 → 0.285)  contrib=0.1427
 WELLNESS            -0.2150  (0.232 → 0.017)  contrib=0.0796
 U.S. NEWS           +0.1724  (0.000 → 0.172)  contrib=0.0862
 ```
+
+## Why it's different
+
+No existing system combines persistent distribution storage, a query language for distributions, and information-theoretic metrics. The closest tools each cover one piece:
+
+| | Hawk | WhyLogs | Evidently | Prometheus | Druid / ClickHouse |
+|---|---|---|---|---|---|
+| Persists distributions, not rows | yes | yes (profiles) | no | yes (histograms) | no |
+| SQL-like query language | yes | no | no | PromQL (limited) | SQL (over rows) |
+| JSD / KL / PSI / MI as queries | yes | no | via Python API | no | no |
+| Joint distributions as first-class | yes | no | no | no | no |
+| Embeddable Rust library | yes | Python / Java | Python | no | no |
+| Temporal drift tracking as query | `TRACK` | SaaS dashboard | Python code | time-range query | time query |
+
+## Use cases
+
+### ML feature drift monitoring
+
+Track how feature distributions shift over time. Detect drift before model performance degrades.
+
+```sql
+TRACK feature_x FROM time:2024-01 GRANULARITY daily
+```
+
+### A/B test analysis
+
+Compare distributions between control and treatment groups without pulling raw data.
+
+```sql
+COMPARE conversion_bucket BETWEEN variant:control AND variant:treatment
+```
+
+### Data quality monitoring
+
+Scan all variables for unexpected distribution shifts between ingestion batches.
+
+```sql
+COMPARE category ACROSS ingest_date
+```
+
+### Model risk / regulatory PSI tracking
+
+Decompose total divergence across all variables to satisfy regulatory model validation requirements (SR 11-7, Basel III).
+
+```sql
+EXPLAIN time:2023Q4 VS time:2024Q4
+```
+
+### Privacy-preserving analytics sharing
+
+Distribute the database file; recipients query distributions without seeing raw rows. Raw-log retention is opt-in, so by default no individual records are stored.
 
 ## How it works
 
@@ -149,10 +208,11 @@ All metrics are rooted in information theory:
 | **KL divergence** | Σ p_i log(p_i/q_i) | [0, ∞) | Directional divergence |
 | **PSI** | KL(P\|\|Q) + KL(Q\|\|P) | [0, ∞) | Population stability (<0.1 stable, >0.2 significant) |
 | **Hellinger** | (1/√2)√(Σ(√p-√q)²) | [0, 1] | Bounded symmetric distance |
+| **Wasserstein** | Σ\|CDF_P - CDF_Q\|·Δx | [0, ∞) | Earth mover's distance (histograms only) |
 | **MI** | H(X)+H(Y)-H(X,Y) | [0, ∞) | Shared information between variables |
 | **NMI** | MI / min(H(X),H(Y)) | [0, 1] | Normalized association strength |
 | **Cramer's V** | √(χ²/(n·min(r-1,c-1))) | [0, 1] | Effect size for categorical association |
-| **Wasserstein** | Σ\|CDF_P - CDF_Q\|·Δx | [0, ∞) | Earth mover's distance (histograms only) |
+| **Conditional MI** | I(X;Y\|Z) = H(X,Z)+H(Y,Z)-H(X,Y,Z)-H(Z) | [0, ∞) | Association between two variables controlling for a third |
 
 ## Web UI
 

@@ -3,6 +3,7 @@ members = [
     "crates/hawk-engine",
     "crates/hawk-server",
     "crates/hawk-mcp",
+    "crates/hawk-python",
 ]
 resolver = "2"
 
