@@ -36,6 +36,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Set version from tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          sed -i.bak "s/^version = .*/version = \"$VERSION\"/" Cargo.toml
+          rm -f Cargo.toml.bak
+          echo "Building hawk-engine $VERSION"
+
       - uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
@@ -52,6 +60,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set version from tag
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          sed -i "s/^version = .*/version = \"$VERSION\"/" Cargo.toml
+          echo "Building sdist $VERSION"
 
       - uses: PyO3/maturin-action@v1
         with:
