@@ -71,6 +71,25 @@ pub struct TrackResult {
     pub snapshots: Vec<DistributionSummary>,
 }
 
+// --- Alerting ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlertHit {
+    pub time_from: String,
+    pub time_to: String,
+    pub metric_value: f64,
+    pub threshold: f64,
+    pub metric: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlertResult {
+    pub variable: String,
+    pub metric: String,
+    pub threshold: f64,
+    pub hits: Vec<AlertHit>,
+}
+
 // --- Conditional MI ---
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

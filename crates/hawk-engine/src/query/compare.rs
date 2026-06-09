@@ -13,6 +13,13 @@ use crate::query::cache::{CompareCacheKey, QueryCache};
 use crate::query::planner::resolve_distribution;
 use crate::query::result_types::{CategoryShift, CompareResult};
 
+fn categorical_labels_and_counts(repr: &DistributionRepr) -> (Vec<String>, Vec<u64>) {
+    let labels = repr
+        .categorical_labels_with_unknown()
+        .expect("categorical labels expected");
+    (labels, repr.value_count_vector())
+}
+
 pub fn execute_compare(
     db: &Database,
     cache: &QueryCache,
@@ -77,7 +84,7 @@ pub fn execute_compare(
             };
 
             let jsd_value = jsd(&a_bins, &b_bins, a_total, b_total);
-            let result = CompareResult {
+            CompareResult {
                 jsd: jsd_value,
                 kl_a_to_b: kl_divergence(&a_bins, &b_bins, a_total, b_total),
                 kl_b_to_a: kl_divergence(&b_bins, &a_bins, b_total, a_total),
@@ -96,23 +103,20 @@ pub fn execute_compare(
                 sample_count_b: b_total,
                 confidence: asymptotic_jsd_confidence(jsd_value, a_total, b_total),
                 top_movers: Vec::new(),
-            };
-            result
+            }
         }
         (
             DistributionRepr::Categorical {
-                categories: a_categories,
-                counts: a_counts,
                 total_count: a_total,
                 ..
             },
             DistributionRepr::Categorical {
-                categories: b_categories,
-                counts: b_counts,
                 total_count: b_total,
                 ..
             },
         ) => {
+            let (a_categories, a_counts) = categorical_labels_and_counts(&dist_a.repr);
+            let (b_categories, b_counts) = categorical_labels_and_counts(&dist_b.repr);
             let (cats, a_aligned, b_aligned) = crate::math::align_categorical(
                 a_categories.as_slice(),
                 a_counts.as_slice(),
@@ -122,7 +126,8 @@ pub fn execute_compare(
             let jsd_value = jsd(&a_aligned, &b_aligned, *a_total, *b_total);
 
             // Compute per-category shifts
-            let top_movers = compute_category_shifts(&cats, &a_aligned, *a_total, &b_aligned, *b_total);
+            let top_movers =
+                compute_category_shifts(&cats, &a_aligned, *a_total, &b_aligned, *b_total);
 
             CompareResult {
                 jsd: jsd_value,
@@ -162,13 +167,29 @@ fn compute_category_shifts(
         .iter()
         .enumerate()
         .map(|(i, cat)| {
-            let p = if a_total > 0 { a_counts[i] as f64 / a_total as f64 } else { 0.0 };
-            let q = if b_total > 0 { b_counts[i] as f64 / b_total as f64 } else { 0.0 };
+            let p = if a_total > 0 {
+                a_counts[i] as f64 / a_total as f64
+            } else {
+                0.0
+            };
+            let q = if b_total > 0 {
+                b_counts[i] as f64 / b_total as f64
+            } else {
+                0.0
+            };
             let m = (p + q) * 0.5;
             // Per-category JSD contribution
             let contrib = if m > 0.0 {
-                let kl_p = if p > 0.0 { 0.5 * p * (p / m).log2() } else { 0.0 };
-                let kl_q = if q > 0.0 { 0.5 * q * (q / m).log2() } else { 0.0 };
+                let kl_p = if p > 0.0 {
+                    0.5 * p * (p / m).log2()
+                } else {
+                    0.0
+                };
+                let kl_q = if q > 0.0 {
+                    0.5 * q * (q / m).log2()
+                } else {
+                    0.0
+                };
                 kl_p + kl_q
             } else {
                 0.0

@@ -104,10 +104,8 @@ pub fn infer_schema(rows: &[Map<String, Value>], config: &InferConfig) -> Schema
             // Heuristic: integer columns that look like years → date dimension.
             let all_integer = values
                 .iter()
-                .all(|v| as_f64(v).map_or(false, |n| n.fract() == 0.0));
-            let looks_like_year = all_integer
-                && min_val >= 1900.0
-                && max_val <= 2100.0;
+                .all(|v| as_f64(v).is_some_and(|n| n.fract() == 0.0));
+            let looks_like_year = all_integer && min_val >= 1900.0 && max_val <= 2100.0;
             let unique_count = {
                 let mut s = HashSet::new();
                 for v in &values {
@@ -204,7 +202,8 @@ pub fn identity_mapping(schema: &Schema) -> crate::ingest::column_mapper::Ingest
 // ---------------------------------------------------------------------------
 
 fn as_f64(v: &Value) -> Option<f64> {
-    v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse::<f64>().ok()))
+    v.as_f64()
+        .or_else(|| v.as_str().and_then(|s| s.parse::<f64>().ok()))
 }
 
 fn value_to_string(v: &Value) -> String {
@@ -261,7 +260,7 @@ mod tests {
 
     #[test]
     fn test_infer_categorical_column() {
-        let cats = vec!["a", "b", "c"];
+        let cats = ["a", "b", "c"];
         let rows: Vec<Map<String, Value>> = cats
             .iter()
             .map(|c| {

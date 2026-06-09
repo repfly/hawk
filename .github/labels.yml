@@ -1,0 +1,30 @@
+- name: correctness
+  color: "d73a4a"
+  description: Math, accounting, or result correctness
+- name: performance
+  color: "fbca04"
+  description: Speed, memory, or storage efficiency
+- name: ci
+  color: "0e8a16"
+  description: Continuous integration and release checks
+- name: documentation
+  color: "0075ca"
+  description: Docs, examples, and onboarding
+- name: security
+  color: "b60205"
+  description: Security or privacy work
+- name: benchmarks
+  color: "5319e7"
+  description: Benchmarking and reproducibility
+- name: examples
+  color: "1d76db"
+  description: Example apps, demos, and fixtures
+- name: product
+  color: "c5def5"
+  description: Positioning, messaging, and user workflows
+- name: developer-experience
+  color: "bfdadc"
+  description: API, tooling, and contributor experience
+- name: release
+  color: "0052cc"
+  description: Versioning, packaging, and publishing

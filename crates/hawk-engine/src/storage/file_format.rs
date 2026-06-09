@@ -1,4 +1,4 @@
-use std::{fs, path::Path};
+use std::{fs, io::Read, path::Path};
 
 use anyhow::{anyhow, Context, Result};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -14,6 +14,7 @@ const MAGIC: [u8; 4] = [0x48, 0x41, 0x57, 0x4B];
 const FORMAT_VERSION: u32 = 3;
 /// zstd compression level (3 = good balance of speed and ratio)
 const ZSTD_LEVEL: i32 = 3;
+const MAX_DECOMPRESSED_BYTES: u64 = 512 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetaFile {
@@ -98,20 +99,36 @@ fn deserialize_bytes<T: DeserializeOwned>(bytes: &[u8], path: &Path) -> Result<T
         let payload = &bytes[8..];
         return if version >= 3 {
             // v3: zstd-compressed bincode
-            let decompressed = zstd::decode_all(payload)
-                .with_context(|| format!("zstd decompress {}", path.display()))?;
+            let decompressed = decompress_zstd_payload(payload, path)?;
             bincode::deserialize(&decompressed)
                 .with_context(|| format!("deserialize {}", path.display()))
         } else {
             // v2: raw bincode
-            bincode::deserialize(payload)
-                .with_context(|| format!("deserialize {}", path.display()))
+            bincode::deserialize(payload).with_context(|| format!("deserialize {}", path.display()))
         };
     }
 
     // Fallback: JSON (v1)
     serde_json::from_slice::<T>(bytes)
         .with_context(|| format!("parse {} (tried binary and JSON)", path.display()))
+}
+
+fn decompress_zstd_payload(payload: &[u8], path: &Path) -> Result<Vec<u8>> {
+    let mut decoder = zstd::Decoder::new(payload)
+        .with_context(|| format!("zstd decompress {}", path.display()))?;
+    let mut limited = (&mut decoder).take(MAX_DECOMPRESSED_BYTES + 1);
+    let mut decompressed = Vec::new();
+    limited
+        .read_to_end(&mut decompressed)
+        .with_context(|| format!("zstd decompress {}", path.display()))?;
+    if decompressed.len() as u64 > MAX_DECOMPRESSED_BYTES {
+        return Err(anyhow!(
+            "file {} decompressed payload exceeds {} bytes",
+            path.display(),
+            MAX_DECOMPRESSED_BYTES
+        ));
+    }
+    Ok(decompressed)
 }
 
 pub fn ensure_file<T>(path: &Path, default: &T) -> Result<()>
@@ -137,4 +154,81 @@ pub fn ensure_snapshot_file(path: &Path) -> Result<()> {
         write_file(path, &SnapshotStore::default())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn test_file(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "hawk-file-format-test-{}-{}",
+            name,
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn round_trip_current_format() {
+        let path = test_file("roundtrip");
+        let meta = MetaFile::default();
+
+        write_file(&path, &meta).expect("write file");
+        let loaded: MetaFile = read_file(&path).expect("read file");
+
+        assert_eq!(loaded.format_version, FORMAT_VERSION);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn truncated_header_fails_cleanly() {
+        let path = test_file("truncated");
+        fs::write(&path, b"HAW").expect("write truncated");
+
+        let err = read_file::<MetaFile>(&path).unwrap_err().to_string();
+
+        assert!(err.contains("parse"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn invalid_magic_fails_cleanly() {
+        let path = test_file("invalid-magic");
+        fs::write(&path, b"NOPE\x03\x00\x00\x00payload").expect("write invalid");
+
+        let err = read_file::<MetaFile>(&path).unwrap_err().to_string();
+
+        assert!(err.contains("parse"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn unsupported_version_fails_cleanly() {
+        let path = test_file("unsupported-version");
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&MAGIC);
+        bytes.extend_from_slice(&(FORMAT_VERSION + 1).to_le_bytes());
+        fs::write(&path, bytes).expect("write unsupported");
+
+        let err = read_file::<MetaFile>(&path).unwrap_err().to_string();
+
+        assert!(err.contains("format version"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn corrupted_compressed_payload_fails_cleanly() {
+        let path = test_file("corrupt-zstd");
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&MAGIC);
+        bytes.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+        bytes.extend_from_slice(b"not-zstd");
+        fs::write(&path, bytes).expect("write corrupt");
+
+        let err = read_file::<MetaFile>(&path).unwrap_err().to_string();
+
+        assert!(err.contains("zstd decompress"));
+        let _ = fs::remove_file(path);
+    }
 }

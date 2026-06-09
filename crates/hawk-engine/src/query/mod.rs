@@ -79,7 +79,15 @@ impl QueryEngine {
             .or_else(|| db.schema().first_variable_name().map(ToOwned::to_owned))
             .ok_or_else(|| anyhow!("no variable available in schema"))?;
 
-        execute_track(db, &self.cache, &variable, &reference.dimensions, start, end, granularity)
+        execute_track(
+            db,
+            &self.cache,
+            &variable,
+            &reference.dimensions,
+            start,
+            end,
+            granularity,
+        )
     }
 
     pub fn mutual_info(
@@ -90,31 +98,56 @@ impl QueryEngine {
         dimension_ref: &str,
     ) -> Result<f64> {
         let parsed = parse_reference(dimension_ref)?;
-        let dim_key = dimension_key_from_pairs(parsed.dimensions.iter().map(|(k, v)| (k.clone(), v.clone())));
+        let dim_key = dimension_key_from_pairs(
+            parsed
+                .dimensions
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone())),
+        );
 
-        let has_joint = db.schema().joints.iter().any(|(a, b)| {
-            (a == var_a && b == var_b) || (a == var_b && b == var_a)
-        });
+        let has_joint = db
+            .schema()
+            .joints
+            .iter()
+            .any(|(a, b)| (a == var_a && b == var_b) || (a == var_b && b == var_a));
         if !has_joint {
             return Err(anyhow!(
                 "no joint distribution defined for '{}' and '{}'; call define_joint() first",
-                var_a, var_b
+                var_a,
+                var_b
             ));
         }
 
         let joint = db
             .get_joint_distribution(var_a, var_b, &dim_key)
-            .ok_or_else(|| anyhow!("joint distribution not found for '{}' and '{}' at {:?}", var_a, var_b, dim_key))?;
+            .ok_or_else(|| {
+                anyhow!(
+                    "joint distribution not found for '{}' and '{}' at {:?}",
+                    var_a,
+                    var_b,
+                    dim_key
+                )
+            })?;
 
         use crate::core::JointRepr;
         let (counts, total) = match &joint.repr {
-            JointRepr::HistogramGrid { counts, total_count, .. } => (counts.clone(), *total_count),
-            JointRepr::ContingencyTable { counts, total_count, .. } => (counts.clone(), *total_count),
-            JointRepr::ConditionalHistograms { histograms, total_count, .. } => {
-                let grid: Vec<Vec<u64>> = histograms
-                    .iter()
-                    .map(|h| h.value_count_vector())
-                    .collect();
+            JointRepr::HistogramGrid {
+                counts,
+                total_count,
+                ..
+            } => (counts.clone(), *total_count),
+            JointRepr::ContingencyTable {
+                counts,
+                total_count,
+                ..
+            } => (counts.clone(), *total_count),
+            JointRepr::ConditionalHistograms {
+                histograms,
+                total_count,
+                ..
+            } => {
+                let grid: Vec<Vec<u64>> =
+                    histograms.iter().map(|h| h.value_count_vector()).collect();
                 (grid, *total_count)
             }
         };
@@ -130,19 +163,28 @@ impl QueryEngine {
         conditioning_dimension: &str,
         filter_dims: Option<&HashMap<String, String>>,
     ) -> Result<CondMutualInfoResult> {
-        let has_joint = db.schema().joints.iter().any(|(a, b)| {
-            (a == var_a && b == var_b) || (a == var_b && b == var_a)
-        });
+        let has_joint = db
+            .schema()
+            .joints
+            .iter()
+            .any(|(a, b)| (a == var_a && b == var_b) || (a == var_b && b == var_a));
         if !has_joint {
             return Err(anyhow!(
                 "no joint distribution defined for '{}' and '{}'; call define_joint() first",
-                var_a, var_b
+                var_a,
+                var_b
             ));
         }
 
-        let dim_values: Vec<String> = db.dimension_values(conditioning_dimension).into_iter().collect();
+        let dim_values: Vec<String> = db
+            .dimension_values(conditioning_dimension)
+            .into_iter()
+            .collect();
         if dim_values.is_empty() {
-            return Err(anyhow!("no values found for dimension '{}'", conditioning_dimension));
+            return Err(anyhow!(
+                "no values found for dimension '{}'",
+                conditioning_dimension
+            ));
         }
 
         let mut slices = Vec::new();
@@ -181,7 +223,10 @@ impl QueryEngine {
         }
 
         if slices.is_empty() {
-            return Err(anyhow!("no joint distributions found across dimension '{}'", conditioning_dimension));
+            return Err(anyhow!(
+                "no joint distributions found across dimension '{}'",
+                conditioning_dimension
+            ));
         }
 
         let cmi = crate::math::conditional_mutual_information(&slices);
@@ -203,7 +248,9 @@ impl QueryEngine {
     ) -> Result<CorrelationReport> {
         let joints = &db.schema().joints;
         if joints.is_empty() {
-            return Err(anyhow!("no joint distributions defined; call define_joint() first"));
+            return Err(anyhow!(
+                "no joint distributions defined; call define_joint() first"
+            ));
         }
 
         let mut all_pairs: Vec<VariablePairCorrelation> = Vec::new();
@@ -252,7 +299,11 @@ impl QueryEngine {
                             nmi,
                             cramers_v: cv,
                             sample_count: total,
-                            dimension_value: if dim_label.is_empty() { None } else { Some(dim_label) },
+                            dimension_value: if dim_label.is_empty() {
+                                None
+                            } else {
+                                Some(dim_label)
+                            },
                         });
                     }
                     total_scanned += 1;
@@ -273,10 +324,23 @@ impl QueryEngine {
     fn extract_joint_counts(joint: &crate::core::JointDistributionObject) -> (Vec<Vec<u64>>, u64) {
         use crate::core::JointRepr;
         match &joint.repr {
-            JointRepr::HistogramGrid { counts, total_count, .. } => (counts.clone(), *total_count),
-            JointRepr::ContingencyTable { counts, total_count, .. } => (counts.clone(), *total_count),
-            JointRepr::ConditionalHistograms { histograms, total_count, .. } => {
-                let grid: Vec<Vec<u64>> = histograms.iter().map(|h| h.value_count_vector()).collect();
+            JointRepr::HistogramGrid {
+                counts,
+                total_count,
+                ..
+            } => (counts.clone(), *total_count),
+            JointRepr::ContingencyTable {
+                counts,
+                total_count,
+                ..
+            } => (counts.clone(), *total_count),
+            JointRepr::ConditionalHistograms {
+                histograms,
+                total_count,
+                ..
+            } => {
+                let grid: Vec<Vec<u64>> =
+                    histograms.iter().map(|h| h.value_count_vector()).collect();
                 (grid, *total_count)
             }
         }

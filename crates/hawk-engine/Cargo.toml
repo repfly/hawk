@@ -10,7 +10,7 @@ readme = "README.md"
 
 [features]
 default = []
-parquet = []
+parquet = ["dep:parquet", "dep:arrow"]
 json = []
 
 [[bin]]
@@ -33,6 +33,8 @@ log.workspace = true
 bincode = "1"
 zstd = "0.13"
 rayon = "1"
+parquet = { version = "58", optional = true }
+arrow = { version = "58", optional = true, default-features = false, features = ["json"] }
 
 [dev-dependencies]
 proptest = "1"
@@ -40,4 +42,8 @@ criterion = { version = "0.5", features = ["html_reports"] }
 
 [[bench]]
 name = "bench_jsd"
+harness = false
+
+[[bench]]
+name = "bench_end_to_end"
 harness = false

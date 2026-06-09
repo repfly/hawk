@@ -35,6 +35,14 @@ pub enum Token {
     As,
     Csv,
     Json,
+    Alert,
+    When,
+
+    // Operators
+    Gt,
+    Lt,
+    Gte,
+    Lte,
 
     // Values
     Ident(String),
@@ -54,8 +62,8 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, String> {
 
     for word in trimmed.split_whitespace() {
         // Strip trailing commas/semicolons
-        let (word, has_comma) = if word.ends_with(',') {
-            (&word[..word.len() - 1], true)
+        let (word, has_comma) = if let Some(stripped) = word.strip_suffix(',') {
+            (stripped, true)
         } else {
             (word, false)
         };
@@ -102,6 +110,12 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, String> {
             "AS" => Token::As,
             "CSV" => Token::Csv,
             "JSON" => Token::Json,
+            "ALERT" => Token::Alert,
+            "WHEN" => Token::When,
+            ">=" => Token::Gte,
+            "<=" => Token::Lte,
+            ">" => Token::Gt,
+            "<" => Token::Lt,
             _ => {
                 // Try dimension:value
                 if let Some(colon_pos) = word.find(':') {

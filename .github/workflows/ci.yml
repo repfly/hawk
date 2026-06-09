@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: Rust workspace
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test workspace
+        run: cargo test --workspace --all-features
+
+      - name: Doc tests
+        run: cargo test --workspace --doc --all-features
+
+  python:
+    name: Python package (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Maturin
+        run: python -m pip install --upgrade pip maturin
+
+      - name: Build Linux wheel
+        run: maturin build -m crates/hawk-python/Cargo.toml --out dist
+
+      - name: Install built wheel
+        run: python -m pip install dist/*.whl
+
+      - name: Import smoke test
+        run: python -c "import hawk_engine; print(hawk_engine.__doc__ or 'hawk_engine imported')"
+
+  binaries:
+    name: Binary smoke builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build hawk-server
+        run: cargo build -p hawk-server
+
+      - name: Build hawk-mcp
+        run: cargo build -p hawk-mcp
+
+  benchmark-smoke:
+    name: Benchmark smoke
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Smoke JSD microbenchmarks
+        run: cargo bench -p hawk-engine --bench bench_jsd -- --test
+
+      - name: Smoke end-to-end benchmarks
+        run: cargo bench -p hawk-engine --bench bench_end_to_end -- --test

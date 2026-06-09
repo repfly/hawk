@@ -134,7 +134,9 @@ impl IngestionPipeline {
                 }
                 #[cfg(not(feature = "json"))]
                 {
-                    Err(anyhow!("json ingestion requires enabling the 'json' feature"))
+                    Err(anyhow!(
+                        "json ingestion requires enabling the 'json' feature"
+                    ))
                 }
             }
             "parquet" => {
@@ -144,7 +146,9 @@ impl IngestionPipeline {
                 }
                 #[cfg(not(feature = "parquet"))]
                 {
-                    Err(anyhow!("parquet ingestion requires enabling the 'parquet' feature"))
+                    Err(anyhow!(
+                        "parquet ingestion requires enabling the 'parquet' feature"
+                    ))
                 }
             }
             other => Err(anyhow!(

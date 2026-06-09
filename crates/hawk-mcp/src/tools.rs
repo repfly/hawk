@@ -22,7 +22,9 @@ pub struct HawkMcp {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct QueryParams {
-    #[schemars(description = "Hawk SQL query string. Use the 'help' tool to see available syntax.")]
+    #[schemars(
+        description = "Hawk SQL query string. Use the 'help' tool to see available syntax."
+    )]
     pub sql: String,
 }
 
@@ -50,9 +52,7 @@ pub struct IngestFileParams {
     pub max_categories: Option<usize>,
     #[schemars(description = "Column names to treat as date dimensions")]
     pub date_columns: Option<Vec<String>>,
-    #[schemars(
-        description = "Date granularity: 'daily', 'monthly', 'yearly' (default: 'daily')"
-    )]
+    #[schemars(description = "Date granularity: 'daily', 'monthly', 'yearly' (default: 'daily')")]
     pub date_granularity: Option<String>,
 }
 
@@ -66,7 +66,9 @@ pub struct ListDimensionsParams {
 
 #[tool_router(server_handler)]
 impl HawkMcp {
-    #[tool(description = "Return the Hawk SQL syntax reference with all available query types and examples.")]
+    #[tool(
+        description = "Return the Hawk SQL syntax reference with all available query types and examples."
+    )]
     fn help(&self) -> String {
         HAWK_SQL_HELP.to_string()
     }
@@ -78,15 +80,19 @@ impl HawkMcp {
         &self,
         Parameters(QueryParams { sql }): Parameters<QueryParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.state.with_db(|db, engine| {
-            match hawk_engine::sql::query(db, engine, &sql) {
-                Ok(result) => Ok(CallToolResult::success(vec![Content::text(result.to_json())])),
+        self.state.with_db(
+            |db, engine| match hawk_engine::sql::query(db, engine, &sql) {
+                Ok(result) => Ok(CallToolResult::success(vec![Content::text(
+                    result.to_json(),
+                )])),
                 Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
-            }
-        })
+            },
+        )
     }
 
-    #[tool(description = "Get the database schema: variables (with types), dimensions, and joint definitions.")]
+    #[tool(
+        description = "Get the database schema: variables (with types), dimensions, and joint definitions."
+    )]
     fn schema(&self) -> Result<CallToolResult, rmcp::ErrorData> {
         self.state.with_db(|db, _engine| {
             let schema = db.schema();
@@ -97,7 +103,9 @@ impl HawkMcp {
         })
     }
 
-    #[tool(description = "Get database statistics: number of distributions, total samples, variable count, dimension count.")]
+    #[tool(
+        description = "Get database statistics: number of distributions, total samples, variable count, dimension count."
+    )]
     fn stats(&self) -> Result<CallToolResult, rmcp::ErrorData> {
         self.state.with_db(|db, _engine| {
             let stats = db.stats();
@@ -109,7 +117,9 @@ impl HawkMcp {
         })
     }
 
-    #[tool(description = "Open an existing Hawk database at the given path. Closes any currently open database.")]
+    #[tool(
+        description = "Open an existing Hawk database at the given path. Closes any currently open database."
+    )]
     fn open_database(
         &self,
         Parameters(OpenDatabaseParams { path, readonly }): Parameters<OpenDatabaseParams>,
@@ -132,7 +142,9 @@ impl HawkMcp {
         Ok(CallToolResult::success(vec![Content::text(summary)]))
     }
 
-    #[tool(description = "Create a new empty Hawk database at the given path. Closes any currently open database.")]
+    #[tool(
+        description = "Create a new empty Hawk database at the given path. Closes any currently open database."
+    )]
     fn create_database(
         &self,
         Parameters(CreateDatabaseParams { path }): Parameters<CreateDatabaseParams>,

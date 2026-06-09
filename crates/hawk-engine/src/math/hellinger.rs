@@ -45,7 +45,7 @@ mod tests {
     #[test]
     fn hellinger_in_bounds() {
         let h = hellinger(&[9, 1], &[1, 9], 10, 10);
-        assert!(h >= 0.0 && h <= 1.0);
+        assert!((0.0..=1.0).contains(&h));
     }
 
     #[test]

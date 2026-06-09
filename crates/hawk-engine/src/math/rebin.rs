@@ -40,7 +40,12 @@ pub fn rebin_histogram(
         let tgt_end = (((src_right - target_min) / target_bin_width).floor() as isize)
             .clamp(0, target_bins as isize - 1) as usize;
 
-        for tgt_idx in tgt_start..=tgt_end {
+        for (tgt_idx, count) in new_counts
+            .iter_mut()
+            .enumerate()
+            .take(tgt_end + 1)
+            .skip(tgt_start)
+        {
             let tgt_left = target_min + tgt_idx as f64 * target_bin_width;
             let tgt_right = tgt_left + target_bin_width;
             let overlap =
@@ -48,7 +53,7 @@ pub fn rebin_histogram(
             if overlap <= 0.0 {
                 continue;
             }
-            new_counts[tgt_idx] += (*src_count as f64 * overlap).round() as u64;
+            *count += (*src_count as f64 * overlap).round() as u64;
         }
     }
 

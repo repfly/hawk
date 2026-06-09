@@ -117,7 +117,12 @@ fn pairwise_chart(query: &str, db: &Database, engine: &QueryEngine) -> String {
         Err(_) => return String::new(),
     };
 
-    let hawk_engine::sql::parser::Statement::Pairwise { dimension, variable, metric } = stmt else {
+    let hawk_engine::sql::parser::Statement::Pairwise {
+        dimension,
+        variable,
+        metric,
+    } = stmt
+    else {
         return String::new();
     };
 
@@ -230,7 +235,13 @@ fn compare_chart(query: &str, db: &Database, engine: &QueryEngine) -> String {
         Err(_) => return String::new(),
     };
 
-    let hawk_engine::sql::parser::Statement::Compare { variable, ref_a, ref_b, .. } = stmt else {
+    let hawk_engine::sql::parser::Statement::Compare {
+        variable,
+        ref_a,
+        ref_b,
+        ..
+    } = stmt
+    else {
         return String::new();
     };
 
@@ -303,7 +314,11 @@ fn compare_chart(query: &str, db: &Database, engine: &QueryEngine) -> String {
 
     // Horizontal diverging bar chart of top movers
     let movers = &result.top_movers[..result.top_movers.len().min(12)];
-    let max_delta = movers.iter().map(|m| m.delta.abs()).fold(0.0_f64, f64::max).max(0.01);
+    let max_delta = movers
+        .iter()
+        .map(|m| m.delta.abs())
+        .fold(0.0_f64, f64::max)
+        .max(0.01);
 
     let bar_h = 22.0;
     let gap = 4.0;
@@ -364,11 +379,22 @@ fn track_chart(query: &str, db: &Database, engine: &QueryEngine) -> String {
         Err(_) => return String::new(),
     };
 
-    let hawk_engine::sql::parser::Statement::Track { reference, granularity, .. } = &stmt else {
+    let hawk_engine::sql::parser::Statement::Track {
+        reference,
+        granularity,
+        ..
+    } = &stmt
+    else {
         return String::new();
     };
 
-    let result = match engine.track(db, &reference.to_ref_string(), None, None, granularity.as_deref()) {
+    let result = match engine.track(
+        db,
+        &reference.to_ref_string(),
+        None,
+        None,
+        granularity.as_deref(),
+    ) {
         Ok(r) => r,
         Err(_) => return String::new(),
     };
@@ -396,7 +422,12 @@ fn rank_chart(query: &str, db: &Database) -> String {
         Err(_) => return String::new(),
     };
 
-    let hawk_engine::sql::parser::Statement::Rank { variable, dimension, .. } = &stmt else {
+    let hawk_engine::sql::parser::Statement::Rank {
+        variable,
+        dimension,
+        ..
+    } = &stmt
+    else {
         return String::new();
     };
 
@@ -416,7 +447,11 @@ fn rank_chart(query: &str, db: &Database) -> String {
     }
 
     // Horizontal bar chart
-    let max_ent = ranked.iter().map(|(_, e, _)| *e).fold(0.0_f64, f64::max).max(0.1);
+    let max_ent = ranked
+        .iter()
+        .map(|(_, e, _)| *e)
+        .fold(0.0_f64, f64::max)
+        .max(0.1);
     let bar_h = 22.0;
     let gap = 4.0;
     let label_w = 70.0;
@@ -460,7 +495,12 @@ fn show_chart(query: &str, db: &Database) -> String {
         Err(_) => return String::new(),
     };
 
-    let hawk_engine::sql::parser::Statement::Show { variable, reference, .. } = &stmt else {
+    let hawk_engine::sql::parser::Statement::Show {
+        variable,
+        reference,
+        ..
+    } = &stmt
+    else {
         return String::new();
     };
 
@@ -468,13 +508,18 @@ fn show_chart(query: &str, db: &Database) -> String {
         reference.dimension.clone(),
         reference.value.clone(),
     )));
-    let dist = match db.get_distribution(&variable, &dim_key) {
+    let dist = match db.get_distribution(variable, &dim_key) {
         Some(d) => d,
         None => return String::new(),
     };
 
     match &dist.repr {
-        hawk_engine::core::DistributionRepr::Categorical { categories, counts, total_count, .. } => {
+        hawk_engine::core::DistributionRepr::Categorical {
+            categories,
+            counts,
+            total_count,
+            ..
+        } => {
             if *total_count == 0 || categories.is_empty() {
                 return String::new();
             }
@@ -487,7 +532,11 @@ fn show_chart(query: &str, db: &Database) -> String {
             pairs.sort_by(|a, b| b.1.total_cmp(&a.1));
             pairs.truncate(15);
 
-            let max_p = pairs.iter().map(|(_, p)| *p).fold(0.0_f64, f64::max).max(0.01);
+            let max_p = pairs
+                .iter()
+                .map(|(_, p)| *p)
+                .fold(0.0_f64, f64::max)
+                .max(0.01);
             let bar_h = 20.0;
             let gap = 3.0;
             let label_w = 130.0;

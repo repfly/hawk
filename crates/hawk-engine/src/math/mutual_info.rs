@@ -117,10 +117,7 @@ mod tests {
     fn cmi_zero_for_independent_slices() {
         use super::conditional_mutual_information;
         let indep = vec![vec![25, 25], vec![25, 25]];
-        let cmi = conditional_mutual_information(&[
-            (indep.clone(), 100),
-            (indep, 100),
-        ]);
+        let cmi = conditional_mutual_information(&[(indep.clone(), 100), (indep, 100)]);
         assert!(cmi.abs() < 1e-10);
     }
 

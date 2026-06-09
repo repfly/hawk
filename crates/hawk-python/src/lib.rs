@@ -232,8 +232,7 @@ impl HawkDB {
     fn schema<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let (db, _) = self.db_ref()?;
         let schema = db.schema();
-        let json_str =
-            serde_json::to_string(schema).map_err(|e| to_py_err(anyhow::anyhow!(e)))?;
+        let json_str = serde_json::to_string(schema).map_err(|e| to_py_err(anyhow::anyhow!(e)))?;
         let json_mod = py.import("json")?;
         let result = json_mod.call_method1("loads", (json_str,))?;
         Ok(result)
@@ -264,9 +263,13 @@ impl HawkDB {
             date_granularity: date_granularity.unwrap_or("yearly").to_owned(),
             ..InferConfig::default()
         };
-        let report =
-            IngestionPipeline::ingest_file_auto(db, PathBuf::from(path), config, IngestOptions::default())
-                .map_err(to_py_err)?;
+        let report = IngestionPipeline::ingest_file_auto(
+            db,
+            PathBuf::from(path),
+            config,
+            IngestOptions::default(),
+        )
+        .map_err(to_py_err)?;
         Ok(IngestReport {
             total_rows: report.total_rows,
             processed_rows: report.processed_rows,

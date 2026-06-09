@@ -45,7 +45,10 @@ pub fn validate_mapping(schema: &Schema, mapping: &IngestMapping) -> Result<()> 
     for dimension in &schema.dimensions {
         let exists = mapping.dimensions.values().any(|v| v == &dimension.name);
         if !exists {
-            return Err(anyhow!("missing mapping for dimension '{}'", dimension.name));
+            return Err(anyhow!(
+                "missing mapping for dimension '{}'",
+                dimension.name
+            ));
         }
     }
 

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::core::{canonical_dimension_key, DistributionObject, DimensionKey};
+use crate::core::{canonical_dimension_key, DimensionKey, DistributionObject};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnapshotEntry {
@@ -30,7 +30,11 @@ impl SnapshotStore {
         });
     }
 
-    pub fn get_snapshots(&self, variable: &str, dimension_key: &DimensionKey) -> Vec<SnapshotEntry> {
+    pub fn get_snapshots(
+        &self,
+        variable: &str,
+        dimension_key: &DimensionKey,
+    ) -> Vec<SnapshotEntry> {
         self.entries
             .get(&Self::key(variable, dimension_key))
             .cloned()

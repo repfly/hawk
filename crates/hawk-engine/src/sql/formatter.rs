@@ -45,7 +45,11 @@ impl QueryResult {
                     out.push_str(", ");
                 }
                 let key = self.header.get(i).map(|s| s.as_str()).unwrap_or("");
-                out.push_str(&format!("\"{}\": \"{}\"", json_escape(key), json_escape(cell)));
+                out.push_str(&format!(
+                    "\"{}\": \"{}\"",
+                    json_escape(key),
+                    json_escape(cell)
+                ));
             }
             out.push('}');
             if row_idx + 1 < self.rows.len() {

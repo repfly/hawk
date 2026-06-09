@@ -38,7 +38,13 @@ mod tests {
         let parsed = parse_reference("topic:russia-ukraine/time:2024-03/variable:leaning")
             .expect("parse should pass");
         assert_eq!(parsed.variable.as_deref(), Some("leaning"));
-        assert_eq!(parsed.dimensions.get("topic").map(String::as_str), Some("russia-ukraine"));
-        assert_eq!(parsed.dimensions.get("time").map(String::as_str), Some("2024-03"));
+        assert_eq!(
+            parsed.dimensions.get("topic").map(String::as_str),
+            Some("russia-ukraine")
+        );
+        assert_eq!(
+            parsed.dimensions.get("time").map(String::as_str),
+            Some("2024-03")
+        );
     }
 }

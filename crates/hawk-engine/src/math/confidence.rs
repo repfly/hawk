@@ -7,7 +7,11 @@ pub struct ConfidenceInfo {
     pub sufficient_samples: bool,
 }
 
-pub fn asymptotic_jsd_confidence(jsd_value: f64, sample_count_a: u64, sample_count_b: u64) -> ConfidenceInfo {
+pub fn asymptotic_jsd_confidence(
+    jsd_value: f64,
+    sample_count_a: u64,
+    sample_count_b: u64,
+) -> ConfidenceInfo {
     let sufficient_samples = sample_count_a >= 30 && sample_count_b >= 30;
     let n_eff = ((sample_count_a as f64) * (sample_count_b as f64))
         / ((sample_count_a + sample_count_b).max(1) as f64);

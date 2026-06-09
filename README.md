@@ -1,5 +1,8 @@
 # Hawk
 
+[![CI](https://github.com/repfly/hawk/actions/workflows/ci.yml/badge.svg)](https://github.com/repfly/hawk/actions/workflows/ci.yml)
+[![Audit](https://github.com/repfly/hawk/actions/workflows/audit.yml/badge.svg)](https://github.com/repfly/hawk/actions/workflows/audit.yml)
+
 The distribution database. Ingest rows, query distributions.
 
 Hawk digests data into compact probability distributions, discards the raw rows,
@@ -81,6 +84,22 @@ EXPLAIN time:2023Q4 VS time:2024Q4
 
 Distribute the database file; recipients query distributions without seeing raw rows. Raw-log retention is opt-in, so by default no individual records are stored.
 
+## When to use Hawk
+
+Use Hawk when you care about **how a distribution changed**, not about individual rows:
+
+- Drift / stability monitoring (PSI, JSD) embedded in an existing system
+- Sharing analytical summaries without shipping raw data
+- Association / dependency discovery (MI, Cramér's V) over categoricals
+- Giving an LLM agent statistical context instead of table access
+- A tiny, file-based artifact (kilobytes) instead of a warehouse
+
+**Not** a fit when you need to retrieve or join individual rows, run arbitrary SQL
+aggregations over raw data, do transactional writes, or need a formal
+privacy/anonymization guarantee — storing distributions reduces exposure but is
+**not** differential privacy. See [docs/positioning.md](docs/positioning.md) for
+the full breakdown and a tool comparison (whylogs, Evidently, DuckDB, DataSketches).
+
 ## How it works
 
 1. **Define** variables (categorical or continuous) and dimensions (e.g., time)
@@ -95,12 +114,24 @@ The database stores only the distribution summaries, not the raw data. Everythin
 # Build
 cargo build --release
 
-# Start the web UI
+# Start the web UI on 127.0.0.1:3000
 cargo run --release --bin hawk-server -- my_database.db 3000
 
 # Or use the CLI
 cargo run --release --bin hawk -- my_database.db
 ```
+
+## Examples
+
+Runnable demos are listed in [docs/examples/README.md](docs/examples/README.md):
+
+```bash
+cargo run -p hawk-engine --example drift_analysis
+cargo run -p hawk-engine --example privacy_safe_sharing
+cargo run -p hawk-engine --example association_discovery
+```
+
+Python and MCP demos live under [examples/python](examples/python) and [examples/mcp](examples/mcp).
 
 ## Query language
 
@@ -221,28 +252,47 @@ cargo run --release --bin hawk-server -- my_database.db 3000
 # Open http://localhost:3000
 ```
 
+The server defaults to `127.0.0.1` for local use. Use `--bind 0.0.0.0` only behind a trusted reverse proxy or on a trusted network.
+
 Features:
 - Interactive query input with htmx (no page reloads)
 - SVG charts: diverging bar charts for COMPARE, entropy timelines for TRACK, distribution bars for SHOW, heatmaps for PAIRWISE
 - Clickable schema sidebar
 - Query history (persisted in localStorage)
 - Streaming ingestion endpoint: `POST /ingest` with JSON body
+- Health and version endpoints: `GET /health`, `GET /version`
+
+Operational flags:
+
+```bash
+cargo run --release --bin hawk-server -- my_database.db 3000 \
+  --bind 127.0.0.1 \
+  --max-body-bytes 1048576 \
+  --max-batch-size 1000 \
+  --auth-token "$HAWK_SERVER_TOKEN"
+```
+
+Use `--readonly` or `--disable-ingest` to reject `/ingest` and `/flush`.
 
 ## Streaming ingestion
 
-The web server accepts live data via HTTP:
+The web server accepts live data via HTTP when ingest is enabled. If `--auth-token` or `HAWK_SERVER_TOKEN` is set, send `Authorization: Bearer <token>`.
 
 ```bash
 # Single record
 curl -X POST http://localhost:3000/ingest \
   -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $HAWK_SERVER_TOKEN" \
   -d '{"category": "TECH", "date": "2024-01-15"}'
 
 # Batch
 curl -X POST http://localhost:3000/ingest \
   -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $HAWK_SERVER_TOKEN" \
   -d '[{"category": "TECH", "date": "2024-01-15"}, {"category": "SPORTS", "date": "2024-01-16"}]'
 ```
+
+Payload limits are enforced by `--max-body-bytes` and `--max-batch-size`. For production-like deployments, terminate TLS and add rate limits at a reverse proxy. Raw-log retention can store original records and should be treated as sensitive.
 
 ## Storage format
 
@@ -255,6 +305,8 @@ Hawk uses a custom binary format with zstd compression:
 ```
 
 A database that digests 209K news articles (42 categories, 20 authors, 11 years) occupies **~6KB on disk**.
+
+Benchmark and compression methodology lives in [docs/benchmarks.md](docs/benchmarks.md), including deterministic dataset generation and copy-pasteable Criterion commands.
 
 | File | Contents |
 |------|----------|
@@ -297,6 +349,35 @@ println!("JSD = {:.6}", result.jsd);
 
 Published to [crates.io](https://crates.io/crates/hawk-engine).
 
+## Python
+
+```bash
+maturin develop -m crates/hawk-python/Cargo.toml --release
+```
+
+```python
+import hawk_engine
+
+db = hawk_engine.HawkDB.create("./demo_db")
+db.ingest("data.csv")
+print(db.query("COMPARE category BETWEEN time:2024 AND time:2025"))
+db.close()
+```
+
+Full install, API reference, and error handling are in [docs/python.md](docs/python.md).
+
+## MCP (agent-safe analytics)
+
+Expose distribution summaries to an LLM agent over MCP — the agent sees JSD/PSI,
+top movers, and associations, not raw rows:
+
+```bash
+cargo run -p hawk-mcp -- --db ./my_hawk_db --readonly
+```
+
+Tool list, client config, example prompts, and the privacy warning are in
+[docs/mcp.md](docs/mcp.md).
+
 ## Building
 
 ```bash
@@ -305,6 +386,24 @@ cargo test
 ```
 
 Requirements: Rust 1.75+
+
+## Project maturity
+
+Hawk is **pre-1.0**. The query language, storage format, and public APIs may
+change between minor versions. The storage format is versioned and breaking
+format changes are noted in the [CHANGELOG](CHANGELOG.md); see
+[docs/compatibility.md](docs/compatibility.md) for the compatibility policy.
+
+## Releases
+
+Release notes live in the [CHANGELOG](CHANGELOG.md). Compatibility guarantees
+(storage format, query language, Rust/Python/MCP surfaces) are documented in
+[docs/compatibility.md](docs/compatibility.md), and the tag-driven release flow is
+in [docs/release-process.md](docs/release-process.md).
+
+## Contributing
+
+Start with [CONTRIBUTING.md](CONTRIBUTING.md). Development architecture notes are in [docs/development.md](docs/development.md), storage compatibility notes are in [docs/file-format.md](docs/file-format.md), and vulnerability reporting guidance is in [SECURITY.md](SECURITY.md).
 
 ## License
 

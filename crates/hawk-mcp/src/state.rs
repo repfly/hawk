@@ -52,18 +52,20 @@ impl AppState {
     }
 
     pub fn swap_db(&self, new_db: Database, path: String) -> Result<(), ErrorData> {
-        let mut db_guard = self.db.lock().map_err(|e| {
-            ErrorData::internal_error(format!("lock poisoned: {}", e), None)
-        })?;
+        let mut db_guard = self
+            .db
+            .lock()
+            .map_err(|e| ErrorData::internal_error(format!("lock poisoned: {}", e), None))?;
         if let Some(ref mut old_db) = *db_guard {
             let _ = old_db.flush();
         }
         *db_guard = Some(new_db);
         drop(db_guard);
 
-        let mut path_guard = self.db_path.lock().map_err(|e| {
-            ErrorData::internal_error(format!("lock poisoned: {}", e), None)
-        })?;
+        let mut path_guard = self
+            .db_path
+            .lock()
+            .map_err(|e| ErrorData::internal_error(format!("lock poisoned: {}", e), None))?;
         *path_guard = Some(path);
         Ok(())
     }

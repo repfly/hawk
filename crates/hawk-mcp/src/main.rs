@@ -8,7 +8,10 @@ mod state;
 mod tools;
 
 #[derive(Parser)]
-#[command(name = "hawk-mcp", about = "MCP server for Hawk distribution analytics")]
+#[command(
+    name = "hawk-mcp",
+    about = "MCP server for Hawk distribution analytics"
+)]
 struct Cli {
     /// Path to a Hawk database to open at startup (optional)
     #[arg(long)]

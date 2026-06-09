@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::dimension_key::DimensionKey;
 use crate::core::schema::VariableType;
+use crate::core::{HawkError, Result};
+
+pub const UNKNOWN_CATEGORY_LABEL: &str = "__unknown__";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum DistributionRepr {
@@ -78,7 +81,12 @@ pub struct TrackPoint {
 }
 
 impl DistributionObject {
-    pub fn new(id: u64, variable: &str, dimension_key: DimensionKey, repr: DistributionRepr) -> Self {
+    pub fn new(
+        id: u64,
+        variable: &str,
+        dimension_key: DimensionKey,
+        repr: DistributionRepr,
+    ) -> Self {
         let now = Utc::now().timestamp() as u64;
         let sample_count = repr.total_count();
         Self {
@@ -127,7 +135,9 @@ impl DistributionRepr {
 
     pub fn total_count(&self) -> u64 {
         match self {
-            Self::Histogram { total_count, .. } | Self::Categorical { total_count, .. } => *total_count,
+            Self::Histogram { total_count, .. } | Self::Categorical { total_count, .. } => {
+                *total_count
+            }
         }
     }
 
@@ -140,16 +150,21 @@ impl DistributionRepr {
             } => counts_to_probs(bin_counts, *total_count),
             Self::Categorical {
                 counts,
+                unknown_count,
                 total_count,
                 ..
-            } => counts_to_probs(counts, *total_count),
+            } => counts_to_probs(&counts_with_unknown(counts, *unknown_count), *total_count),
         }
     }
 
     pub fn value_count_vector(&self) -> Vec<u64> {
         match self {
             Self::Histogram { bin_counts, .. } => bin_counts.clone(),
-            Self::Categorical { counts, .. } => counts.clone(),
+            Self::Categorical {
+                counts,
+                unknown_count,
+                ..
+            } => counts_with_unknown(counts, *unknown_count),
         }
     }
 
@@ -210,25 +225,53 @@ impl DistributionRepr {
         }
     }
 
-    pub fn increment_categorical(&mut self, index: Option<usize>, by: u64) {
-        if let Self::Categorical {
+    pub fn increment_categorical(&mut self, index: Option<usize>, by: u64) -> Result<()> {
+        let Self::Categorical {
             counts,
             unknown_count,
             total_count,
             ..
         } = self
-        {
-            match index {
-                Some(i) => {
-                    if let Some(slot) = counts.get_mut(i) {
-                        *slot += by;
-                    }
-                }
-                None => *unknown_count += by,
+        else {
+            return Err(HawkError::TypeMismatch(
+                "cannot increment categorical count on histogram distribution".to_owned(),
+            ));
+        };
+
+        match index {
+            Some(i) => {
+                let Some(slot) = counts.get_mut(i) else {
+                    return Err(HawkError::SchemaValidation(format!(
+                        "category index {} is out of range for {} categories",
+                        i,
+                        counts.len()
+                    )));
+                };
+                *slot += by;
             }
-            *total_count += by;
+            None => *unknown_count += by,
+        }
+
+        *total_count += by;
+        Ok(())
+    }
+
+    pub fn categorical_labels_with_unknown(&self) -> Option<Vec<String>> {
+        match self {
+            Self::Categorical { categories, .. } => {
+                let mut labels = categories.clone();
+                labels.push(UNKNOWN_CATEGORY_LABEL.to_owned());
+                Some(labels)
+            }
+            Self::Histogram { .. } => None,
         }
     }
+}
+
+fn counts_with_unknown(counts: &[u64], unknown_count: u64) -> Vec<u64> {
+    let mut all_counts = counts.to_vec();
+    all_counts.push(unknown_count);
+    all_counts
 }
 
 fn counts_to_probs(counts: &[u64], total: u64) -> Vec<f64> {

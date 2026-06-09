@@ -8,15 +8,14 @@ Columns:
   - created_at       (date)                   → time dimension
 
 Run:
-  python tests/generate_test_data.py
-  # produces tests/fixtures/community_notes_10k.csv
+  python tests/generate_test_data.py --rows 10000 --seed 42 --output tests/fixtures/community_notes_10k.csv
 """
 
+import argparse
 import csv
+from pathlib import Path
 import random
 from datetime import date, timedelta
-
-random.seed(42)
 
 TOPICS = {
     "russia-ukraine":  {"sentiment_mean": 0.15, "sentiment_std": 0.35, "leaning_weights": [0.25, 0.35, 0.40]},
@@ -29,35 +28,51 @@ TOPICS = {
 LEANINGS = ["left", "center", "right"]
 START_DATE = date(2023, 1, 1)
 END_DATE = date(2025, 6, 30)
-NUM_ROWS = 10_000
 
-def random_date():
+def random_date(rng):
     delta = (END_DATE - START_DATE).days
-    return START_DATE + timedelta(days=random.randint(0, delta))
+    return START_DATE + timedelta(days=rng.randint(0, delta))
 
 def clamp(val, lo, hi):
     return max(lo, min(hi, val))
 
-rows = []
-for _ in range(NUM_ROWS):
-    topic = random.choice(list(TOPICS.keys()))
-    cfg = TOPICS[topic]
-    sentiment = clamp(random.gauss(cfg["sentiment_mean"], cfg["sentiment_std"]), -1.0, 1.0)
-    leaning = random.choices(LEANINGS, weights=cfg["leaning_weights"], k=1)[0]
-    created = random_date()
-    rows.append({
-        "sentiment_score": round(sentiment, 4),
-        "political_leaning": leaning,
-        "topic_label": topic,
-        "created_at": created.isoformat(),
-    })
+def build_rows(num_rows, seed):
+    rng = random.Random(seed)
+    rows = []
+    topics = list(TOPICS.keys())
+    for _ in range(num_rows):
+        topic = rng.choice(topics)
+        cfg = TOPICS[topic]
+        sentiment = clamp(rng.gauss(cfg["sentiment_mean"], cfg["sentiment_std"]), -1.0, 1.0)
+        leaning = rng.choices(LEANINGS, weights=cfg["leaning_weights"], k=1)[0]
+        created = random_date(rng)
+        rows.append({
+            "sentiment_score": round(sentiment, 4),
+            "political_leaning": leaning,
+            "topic_label": topic,
+            "created_at": created.isoformat(),
+        })
+    return rows
 
-out_path = "tests/fixtures/community_notes_10k.csv"
-with open(out_path, "w", newline="") as f:
-    writer = csv.DictWriter(f, fieldnames=["sentiment_score", "political_leaning", "topic_label", "created_at"])
-    writer.writeheader()
-    writer.writerows(rows)
+def main():
+    parser = argparse.ArgumentParser(description="Generate deterministic Hawk benchmark/test CSV data.")
+    parser.add_argument("--rows", type=int, default=10_000)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--output", default="tests/fixtures/community_notes_10k.csv")
+    args = parser.parse_args()
 
-print(f"Wrote {len(rows)} rows to {out_path}")
-print(f"Topics: {list(TOPICS.keys())}")
-print(f"Date range: {START_DATE} — {END_DATE}")
+    rows = build_rows(args.rows, args.seed)
+    out_path = Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["sentiment_score", "political_leaning", "topic_label", "created_at"])
+        writer.writeheader()
+        writer.writerows(rows)
+
+    print(f"Wrote {len(rows)} rows to {out_path}")
+    print(f"Seed: {args.seed}")
+    print(f"Topics: {list(TOPICS.keys())}")
+    print(f"Date range: {START_DATE} to {END_DATE}")
+
+if __name__ == "__main__":
+    main()

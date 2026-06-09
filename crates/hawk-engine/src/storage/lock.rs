@@ -11,6 +11,7 @@ impl DatabaseLock {
     pub fn acquire(path: &Path) -> Result<Self> {
         let file = File::options()
             .create(true)
+            .truncate(false)
             .read(true)
             .write(true)
             .open(path)

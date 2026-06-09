@@ -6,11 +6,19 @@ use hawk_engine::storage::{Database, OpenMode};
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
+    if args.len() == 2 && matches!(args[1].as_str(), "--version" | "-V") {
+        println!("hawk {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
+
     if args.len() < 2 {
         eprintln!("Usage: hawk <database_path> [query]");
         eprintln!();
         eprintln!("Interactive mode:  hawk ./my_db");
-        eprintln!("One-shot mode:     hawk ./my_db \"COMPARE category BETWEEN time:2013 AND time:2022\"");
+        eprintln!(
+            "One-shot mode:     hawk ./my_db \"COMPARE category BETWEEN time:2013 AND time:2022\""
+        );
+        eprintln!("Version:           hawk --version");
         eprintln!();
         eprintln!("Available queries:");
         eprintln!("  COMPARE <var> BETWEEN <dim:val> AND <dim:val>");

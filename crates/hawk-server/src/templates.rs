@@ -3,7 +3,11 @@ use hawk_engine::sql::formatter::QueryResult;
 use hawk_engine::storage::DatabaseStats;
 
 pub fn index_page(db_path: &str, stats: &DatabaseStats, schema: &Schema) -> String {
-    let first_dim_name = schema.dimensions.first().map(|d| d.name.as_str()).unwrap_or("time");
+    let first_dim_name = schema
+        .dimensions
+        .first()
+        .map(|d| d.name.as_str())
+        .unwrap_or("time");
     let first_dim_value = "1";
 
     let variables_html: String = schema
@@ -24,7 +28,11 @@ pub fn index_page(db_path: &str, stats: &DatabaseStats, schema: &Schema) -> Stri
                     format!(
                         "categorical &middot; {} categories{}",
                         categories.len(),
-                        if *allow_unknown { " &middot; +unknown" } else { "" }
+                        if *allow_unknown {
+                            " &middot; +unknown"
+                        } else {
+                            ""
+                        }
                     )
                 }
             };
@@ -70,17 +78,15 @@ pub fn index_page(db_path: &str, stats: &DatabaseStats, schema: &Schema) -> Stri
         .collect();
 
     let var_name = schema.first_variable_name().unwrap_or("category");
-    let dim_name = schema.dimensions.first().map(|d| d.name.as_str()).unwrap_or("time");
+    let dim_name = schema
+        .dimensions
+        .first()
+        .map(|d| d.name.as_str())
+        .unwrap_or("time");
     let rank_q = format!("RANK {} BY ENTROPY OVER {}", var_name, dim_name);
     let show_q = format!("SHOW {} AT {}:2022", var_name, dim_name);
 
-    let example_queries = vec![
-        "STATS",
-        "SCHEMA",
-        "DIMENSIONS time",
-        &rank_q,
-        &show_q,
-    ];
+    let example_queries = ["STATS", "SCHEMA", "DIMENSIONS time", &rank_q, &show_q];
 
     let quick_buttons: String = example_queries
         .iter()
@@ -263,10 +269,16 @@ pub fn query_error(query: &str, error: &str) -> String {
 
 fn colorize_cell(cell: &str) -> String {
     // Detect delta values like "+0.1234" or "-0.0567"
-    if cell.starts_with('+') && cell.len() > 1 && cell[1..].starts_with(|c: char| c.is_ascii_digit()) {
+    if cell.starts_with('+')
+        && cell.len() > 1
+        && cell[1..].starts_with(|c: char| c.is_ascii_digit())
+    {
         return format!("<span class=\"pos\">{}</span>", html_escape(cell));
     }
-    if cell.starts_with('-') && cell.len() > 1 && cell[1..].starts_with(|c: char| c.is_ascii_digit()) {
+    if cell.starts_with('-')
+        && cell.len() > 1
+        && cell[1..].starts_with(|c: char| c.is_ascii_digit())
+    {
         // Check if it's likely a delta (not just a negative number in other context)
         if cell.contains('.') {
             return format!("<span class=\"neg\">{}</span>", html_escape(cell));

@@ -16,10 +16,7 @@ pub enum Statement {
         filters: Vec<DimRef>,
     },
     /// EXPLAIN <dim_ref> VS <dim_ref>
-    Explain {
-        ref_a: DimRef,
-        ref_b: DimRef,
-    },
+    Explain { ref_a: DimRef, ref_b: DimRef },
     /// TRACK <variable> FROM <dim_ref> [GRANULARITY <ident>]
     Track {
         variable: String,
@@ -75,14 +72,30 @@ pub enum Statement {
         inner: Box<Statement>,
         format: ExportFormat,
     },
+    /// EXPORT DISTRIBUTION <variable> AT <dim_ref> AS JSON
+    ExportDistribution { variable: String, reference: DimRef },
+    /// ALERT WHEN <metric> <op> <value> ON <variable> [FROM <dim_ref>]
+    Alert {
+        metric: String,
+        op: AlertOp,
+        threshold: f64,
+        variable: String,
+        reference: Option<DimRef>,
+    },
     /// STATS
     Stats,
     /// SCHEMA
     Schema,
     /// DIMENSIONS [<name>]
-    Dimensions {
-        name: Option<String>,
-    },
+    Dimensions { name: Option<String> },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AlertOp {
+    Gt,
+    Lt,
+    Gte,
+    Lte,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -186,13 +199,14 @@ impl Parser {
             Token::Pairwise => self.parse_pairwise(),
             Token::Nearest => self.parse_nearest(),
             Token::Export => self.parse_export(),
+            Token::Alert => self.parse_alert(),
             Token::Stats => Ok(Statement::Stats),
             Token::Schema => Ok(Statement::Schema),
             Token::Dimensions => self.parse_dimensions(),
             Token::Eof => Err("empty query".into()),
             other => Err(format!(
                 "unexpected token {:?}; expected COMPARE, EXPLAIN, TRACK, SHOW, RANK, MI, CMI, \
-                 CORRELATIONS, PAIRWISE, NEAREST, EXPORT, STATS, SCHEMA, or DIMENSIONS",
+                 CORRELATIONS, PAIRWISE, NEAREST, EXPORT, ALERT, STATS, SCHEMA, or DIMENSIONS",
                 other
             )),
         }
@@ -227,7 +241,10 @@ impl Parser {
                     filters,
                 })
             }
-            other => Err(format!("expected BETWEEN or ACROSS after variable, got {:?}", other)),
+            other => Err(format!(
+                "expected BETWEEN or ACROSS after variable, got {:?}",
+                other
+            )),
         }
     }
 
@@ -405,9 +422,75 @@ impl Parser {
         })
     }
 
+    // ALERT WHEN <metric> <op> <value> ON <variable> [FROM <dim_ref>]
+    fn parse_alert(&mut self) -> Result<Statement, String> {
+        self.expect_token(&Token::When)?;
+        let metric = self.expect_ident()?;
+        let op = match self.advance().clone() {
+            Token::Gt => AlertOp::Gt,
+            Token::Lt => AlertOp::Lt,
+            Token::Gte => AlertOp::Gte,
+            Token::Lte => AlertOp::Lte,
+            other => {
+                return Err(format!(
+                    "expected comparison operator (>, <, >=, <=), got {:?}",
+                    other
+                ))
+            }
+        };
+        let threshold_str = self.expect_ident()?;
+        let threshold: f64 = threshold_str
+            .parse()
+            .map_err(|_| format!("expected numeric threshold, got '{}'", threshold_str))?;
+        self.expect_token(&Token::On)?;
+        let variable = self.expect_ident()?;
+        let reference = if self.peek() == &Token::From {
+            self.advance();
+            Some(self.expect_dim_ref()?)
+        } else {
+            None
+        };
+        Ok(Statement::Alert {
+            metric,
+            op,
+            threshold,
+            variable,
+            reference,
+        })
+    }
+
+    // EXPORT DISTRIBUTION <variable> AT <dim_ref> AS JSON
+    fn parse_export_distribution(&mut self) -> Result<Statement, String> {
+        let variable = self.expect_ident()?;
+        self.expect_token(&Token::At)?;
+        let reference = self.expect_dim_ref()?;
+        self.expect_token(&Token::As)?;
+        match self.peek() {
+            Token::Json => {
+                self.advance();
+                Ok(Statement::ExportDistribution {
+                    variable,
+                    reference,
+                })
+            }
+            other => Err(format!(
+                "expected JSON after AS for distribution export, got {:?}",
+                other
+            )),
+        }
+    }
+
     // EXPORT <inner_query> AS CSV|JSON
     fn parse_export(&mut self) -> Result<Statement, String> {
-        // Save position and parse the inner statement
+        // Check for EXPORT DISTRIBUTION ...
+        if let Token::Ident(ref s) = *self.peek() {
+            if s.eq_ignore_ascii_case("distribution") {
+                self.advance();
+                return self.parse_export_distribution();
+            }
+        }
+
+        // Otherwise parse inner statement
         let inner = self.parse()?;
 
         self.expect_token(&Token::As)?;
@@ -458,8 +541,14 @@ mod tests {
             stmt,
             Statement::Compare {
                 variable: "category".into(),
-                ref_a: DimRef { dimension: "time".into(), value: "2013".into() },
-                ref_b: DimRef { dimension: "time".into(), value: "2022".into() },
+                ref_a: DimRef {
+                    dimension: "time".into(),
+                    value: "2013".into()
+                },
+                ref_b: DimRef {
+                    dimension: "time".into(),
+                    value: "2022".into()
+                },
                 filters: vec![],
             }
         );
@@ -467,7 +556,10 @@ mod tests {
 
     #[test]
     fn parse_compare_with_where() {
-        let stmt = parse("COMPARE category BETWEEN time:2013 AND time:2022 WHERE region:US AND topic:politics").unwrap();
+        let stmt = parse(
+            "COMPARE category BETWEEN time:2013 AND time:2022 WHERE region:US AND topic:politics",
+        )
+        .unwrap();
         match stmt {
             Statement::Compare { filters, .. } => {
                 assert_eq!(filters.len(), 2);
@@ -524,7 +616,13 @@ mod tests {
     fn parse_show() {
         let stmt = parse("SHOW category AT time:2022").unwrap();
         match stmt {
-            Statement::Show { variable, filters, top_n, bottom_n, .. } => {
+            Statement::Show {
+                variable,
+                filters,
+                top_n,
+                bottom_n,
+                ..
+            } => {
                 assert_eq!(variable, "category");
                 assert!(filters.is_empty());
                 assert!(top_n.is_none());
@@ -551,7 +649,9 @@ mod tests {
     fn parse_show_top() {
         let stmt = parse("SHOW category AT time:2022 TOP 10").unwrap();
         match stmt {
-            Statement::Show { top_n, bottom_n, .. } => {
+            Statement::Show {
+                top_n, bottom_n, ..
+            } => {
                 assert_eq!(top_n, Some(10));
                 assert!(bottom_n.is_none());
             }
@@ -563,7 +663,9 @@ mod tests {
     fn parse_show_bottom() {
         let stmt = parse("SHOW category AT time:2022 BOTTOM 5").unwrap();
         match stmt {
-            Statement::Show { top_n, bottom_n, .. } => {
+            Statement::Show {
+                top_n, bottom_n, ..
+            } => {
                 assert!(top_n.is_none());
                 assert_eq!(bottom_n, Some(5));
             }

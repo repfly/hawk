@@ -4,7 +4,7 @@ use crate::query::QueryEngine;
 use crate::storage::Database;
 
 use crate::sql::formatter::QueryResult;
-use crate::sql::parser::{DimRef, ExportFormat, Statement};
+use crate::sql::parser::{AlertOp, DimRef, ExportFormat, Statement};
 
 pub fn execute(db: &Database, engine: &QueryEngine, stmt: &Statement) -> Result<QueryResult> {
     match stmt {
@@ -74,6 +74,27 @@ pub fn execute(db: &Database, engine: &QueryEngine, stmt: &Statement) -> Result<
 
         Statement::Export { inner, format } => exec_export(db, engine, inner, format),
 
+        Statement::ExportDistribution {
+            variable,
+            reference,
+        } => exec_export_distribution(db, variable, reference),
+
+        Statement::Alert {
+            metric,
+            op,
+            threshold,
+            variable,
+            reference,
+        } => exec_alert(
+            db,
+            engine,
+            metric,
+            op,
+            *threshold,
+            variable,
+            reference.as_ref(),
+        ),
+
         Statement::Stats => exec_stats(db),
         Statement::Schema => exec_schema(db),
         Statement::Dimensions { name } => exec_dimensions(db, name.as_deref()),
@@ -82,8 +103,11 @@ pub fn execute(db: &Database, engine: &QueryEngine, stmt: &Statement) -> Result<
 
 /// Build a dimension key from a primary DimRef plus optional filter DimRefs.
 fn build_dim_key(reference: &DimRef, filters: &[DimRef]) -> crate::core::DimensionKey {
-    let pairs = std::iter::once((reference.dimension.clone(), reference.value.clone()))
-        .chain(filters.iter().map(|f| (f.dimension.clone(), f.value.clone())));
+    let pairs = std::iter::once((reference.dimension.clone(), reference.value.clone())).chain(
+        filters
+            .iter()
+            .map(|f| (f.dimension.clone(), f.value.clone())),
+    );
     crate::core::dimension_key_from_pairs(pairs)
 }
 
@@ -108,12 +132,7 @@ fn exec_compare(
     let ref_a_str = build_ref_string(ref_a, filters);
     let ref_b_str = build_ref_string(ref_b, filters);
 
-    let result = engine.compare(
-        db,
-        &ref_a_str,
-        &ref_b_str,
-        Some(variable),
-    )?;
+    let result = engine.compare(db, &ref_a_str, &ref_b_str, Some(variable))?;
 
     let mut rows = vec![
         vec!["JSD".into(), format!("{:.6}", result.jsd)],
@@ -201,10 +220,7 @@ fn exec_compare_all(
                         format!("{:.6}", result.jsd),
                         format!("{:.6}", result.hellinger),
                         format!("{:.6}", result.psi),
-                        format!(
-                            "{} vs {}",
-                            result.sample_count_a, result.sample_count_b
-                        ),
+                        format!("{} vs {}", result.sample_count_a, result.sample_count_b),
                     ]);
                 }
                 Err(_) => {
@@ -298,13 +314,7 @@ fn exec_track(
     reference: &DimRef,
     granularity: Option<&str>,
 ) -> Result<QueryResult> {
-    let result = engine.track(
-        db,
-        &reference.to_ref_string(),
-        None,
-        None,
-        granularity,
-    )?;
+    let result = engine.track(db, &reference.to_ref_string(), None, None, granularity)?;
 
     let mut rows = Vec::new();
     for (i, tp) in result.time_points.iter().enumerate() {
@@ -363,9 +373,12 @@ fn exec_show(
     let mut cat_rows: Vec<(f64, Vec<String>)> = Vec::new();
 
     match &dist.repr {
-        crate::core::DistributionRepr::Categorical {
-            categories, counts, total_count, ..
-        } => {
+        crate::core::DistributionRepr::Categorical { total_count, .. } => {
+            let categories = dist
+                .repr
+                .categorical_labels_with_unknown()
+                .expect("categorical labels expected");
+            let counts = dist.repr.value_count_vector();
             for (cat, count) in categories.iter().zip(counts.iter()) {
                 let prob = if *total_count > 0 {
                     *count as f64 / *total_count as f64
@@ -375,15 +388,15 @@ fn exec_show(
                 let bar = "#".repeat((prob * 40.0) as usize);
                 cat_rows.push((
                     prob,
-                    vec![
-                        cat.clone(),
-                        format!("{:6}  {:.4}  {}", count, prob, bar),
-                    ],
+                    vec![cat.clone(), format!("{:6}  {:.4}  {}", count, prob, bar)],
                 ));
             }
         }
         crate::core::DistributionRepr::Histogram {
-            min, max, bin_counts, total_count,
+            min,
+            max,
+            bin_counts,
+            total_count,
         } => {
             let n = bin_counts.len();
             let width = (max - min) / n as f64;
@@ -620,11 +633,11 @@ fn exec_pairwise(
         .enumerate()
         .map(|(i, label)| {
             let mut row = vec![label.clone()];
-            for j in 0..labels.len() {
+            for (j, value) in matrix[i].iter().enumerate().take(labels.len()) {
                 row.push(if i == j {
                     "—".into()
                 } else {
-                    format!("{:.4}", matrix[i][j])
+                    format!("{:.4}", value)
                 });
             }
             row
@@ -701,6 +714,153 @@ fn exec_export(
     })
 }
 
+fn check_threshold(value: f64, op: &AlertOp, threshold: f64) -> bool {
+    match op {
+        AlertOp::Gt => value > threshold,
+        AlertOp::Lt => value < threshold,
+        AlertOp::Gte => value >= threshold,
+        AlertOp::Lte => value <= threshold,
+    }
+}
+
+fn exec_alert(
+    db: &Database,
+    engine: &QueryEngine,
+    metric: &str,
+    op: &AlertOp,
+    threshold: f64,
+    variable: &str,
+    reference: Option<&DimRef>,
+) -> Result<QueryResult> {
+    // Determine the dimension to track from
+    let ref_str = match reference {
+        Some(r) => r.to_ref_string(),
+        None => {
+            let dims = db.schema().dimensions.clone();
+            let first_dim = dims
+                .first()
+                .ok_or_else(|| anyhow!("no dimensions defined; use FROM <dim:val>"))?;
+            let first_val = db
+                .dimension_values(&first_dim.name)
+                .into_iter()
+                .next()
+                .ok_or_else(|| anyhow!("dimension '{}' has no values", first_dim.name))?;
+            format!("{}:{}", first_dim.name, first_val)
+        }
+    };
+
+    let track = engine.track(db, &ref_str, None, None, None)?;
+
+    let metric_lower = metric.to_ascii_lowercase();
+    let op_str = match op {
+        AlertOp::Gt => ">",
+        AlertOp::Lt => "<",
+        AlertOp::Gte => ">=",
+        AlertOp::Lte => "<=",
+    };
+
+    let mut rows = Vec::new();
+
+    for i in 0..track.time_points.len().saturating_sub(1) {
+        let value = match metric_lower.as_str() {
+            "jsd" => track.drift_series.get(i).copied().unwrap_or(0.0),
+            "entropy" => track.entropy_series[i],
+            "psi" | "hellinger" => {
+                // Need to run compare for these metrics
+                let ref_a = format!(
+                    "{}:{}",
+                    reference.map(|r| r.dimension.as_str()).unwrap_or(
+                        db.schema()
+                            .dimensions
+                            .first()
+                            .map(|d| d.name.as_str())
+                            .unwrap_or("")
+                    ),
+                    track.time_points[i]
+                );
+                let ref_b = format!(
+                    "{}:{}",
+                    reference.map(|r| r.dimension.as_str()).unwrap_or(
+                        db.schema()
+                            .dimensions
+                            .first()
+                            .map(|d| d.name.as_str())
+                            .unwrap_or("")
+                    ),
+                    track.time_points[i + 1]
+                );
+                match engine.compare(db, &ref_a, &ref_b, Some(variable)) {
+                    Ok(cmp) => {
+                        if metric_lower == "psi" {
+                            cmp.psi
+                        } else {
+                            cmp.hellinger
+                        }
+                    }
+                    Err(_) => continue,
+                }
+            }
+            other => {
+                return Err(anyhow!(
+                    "unsupported alert metric '{}'; use jsd, psi, hellinger, or entropy",
+                    other
+                ))
+            }
+        };
+
+        if check_threshold(value, op, threshold) {
+            rows.push(vec![
+                track.time_points[i].clone(),
+                track.time_points[i + 1].clone(),
+                format!("{:.6}", value),
+                format!("{} {} {}", metric_lower, op_str, threshold),
+            ]);
+        }
+    }
+
+    if rows.is_empty() {
+        rows.push(vec![
+            "No alerts triggered".into(),
+            "".into(),
+            "".into(),
+            format!("{} {} {}", metric_lower, op_str, threshold),
+        ]);
+    }
+
+    Ok(QueryResult {
+        header: vec![
+            "Time From".into(),
+            "Time To".into(),
+            metric.to_uppercase(),
+            "Condition".into(),
+        ],
+        rows,
+    })
+}
+
+fn exec_export_distribution(
+    db: &Database,
+    variable: &str,
+    reference: &DimRef,
+) -> Result<QueryResult> {
+    let dim_key = build_dim_key(reference, &[]);
+    let dist = db.get_distribution(variable, &dim_key).ok_or_else(|| {
+        anyhow!(
+            "distribution not found for '{}' at {}",
+            variable,
+            reference.to_ref_string()
+        )
+    })?;
+
+    let json = serde_json::to_string_pretty(&dist.repr)
+        .map_err(|e| anyhow!("failed to serialize distribution: {}", e))?;
+
+    Ok(QueryResult {
+        header: vec!["Distribution JSON".into()],
+        rows: vec![vec![json]],
+    })
+}
+
 fn exec_stats(db: &Database) -> Result<QueryResult> {
     let stats = db.stats();
     Ok(QueryResult {
@@ -721,10 +881,15 @@ fn exec_schema(db: &Database) -> Result<QueryResult> {
     for v in &schema.variables {
         let desc = match &v.var_type {
             crate::core::VariableType::Continuous { bins, range } => {
-                let r = range.map(|(a, b)| format!("[{}, {}]", a, b)).unwrap_or_default();
+                let r = range
+                    .map(|(a, b)| format!("[{}, {}]", a, b))
+                    .unwrap_or_default();
                 format!("continuous  bins={}  range={}", bins, r)
             }
-            crate::core::VariableType::Categorical { categories, allow_unknown } => {
+            crate::core::VariableType::Categorical {
+                categories,
+                allow_unknown,
+            } => {
                 format!(
                     "categorical  cats={}  unknown={}",
                     categories.len(),
@@ -782,13 +947,22 @@ fn exec_dimensions(db: &Database, name: Option<&str>) -> Result<QueryResult> {
 fn extract_joint_counts(joint: &crate::core::JointDistributionObject) -> (Vec<Vec<u64>>, u64) {
     use crate::core::JointRepr;
     match &joint.repr {
-        JointRepr::HistogramGrid { counts, total_count, .. } => (counts.clone(), *total_count),
-        JointRepr::ContingencyTable { counts, total_count, .. } => (counts.clone(), *total_count),
-        JointRepr::ConditionalHistograms { histograms, total_count, .. } => {
-            let grid: Vec<Vec<u64>> = histograms
-                .iter()
-                .map(|h| h.value_count_vector())
-                .collect();
+        JointRepr::HistogramGrid {
+            counts,
+            total_count,
+            ..
+        } => (counts.clone(), *total_count),
+        JointRepr::ContingencyTable {
+            counts,
+            total_count,
+            ..
+        } => (counts.clone(), *total_count),
+        JointRepr::ConditionalHistograms {
+            histograms,
+            total_count,
+            ..
+        } => {
+            let grid: Vec<Vec<u64>> = histograms.iter().map(|h| h.value_count_vector()).collect();
             (grid, *total_count)
         }
     }
