@@ -20,6 +20,16 @@ struct Cli {
     /// Open database in read-only mode
     #[arg(long)]
     readonly: bool,
+
+    /// Small-cell suppression: fold categories with fewer than this many
+    /// samples into __unknown__ on every query result (storage untouched)
+    #[arg(long)]
+    min_cell_count: Option<u64>,
+
+    /// Session disclosure budget in bits; over-budget queries receive a
+    /// structured refusal (see docs/information-ledger.md)
+    #[arg(long)]
+    bit_budget: Option<f64>,
 }
 
 #[tokio::main]
@@ -43,7 +53,12 @@ async fn main() -> anyhow::Result<()> {
         (None, None)
     };
 
-    let state = Arc::new(state::AppState::new(db, path));
+    let state = Arc::new(state::AppState::new(
+        db,
+        path,
+        cli.min_cell_count,
+        cli.bit_budget,
+    ));
     let server = tools::HawkMcp { state };
 
     let service = server.serve(rmcp::transport::stdio()).await?;

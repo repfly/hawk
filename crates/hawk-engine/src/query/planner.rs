@@ -10,11 +10,12 @@ pub fn resolve_distribution(
     db: &Database,
     variable: &str,
     dimensions: &HashMap<String, String>,
+    min_cell_count: Option<u64>,
 ) -> Result<DistributionObject> {
     let key = dimension_key_from_pairs(dimensions.iter().map(|(k, v)| (k.clone(), v.clone())));
 
     if let Some(exact) = db.get_distribution(variable, &key) {
-        return Ok(exact.clone());
+        return Ok(suppress(exact.clone(), min_cell_count));
     }
 
     let matches: Vec<&DistributionObject> = db
@@ -42,5 +43,13 @@ pub fn resolve_distribution(
     aggregated.sample_count = aggregated.repr.total_count();
     let counts = aggregated.repr.value_count_vector();
     aggregated.entropy = entropy(&counts, aggregated.sample_count);
-    Ok(aggregated)
+    Ok(suppress(aggregated, min_cell_count))
+}
+
+/// Small-cell suppression on the resolved (read-layer) distribution.
+fn suppress(mut dist: DistributionObject, min_cell_count: Option<u64>) -> DistributionObject {
+    if let Some(k) = min_cell_count {
+        dist.suppress_small_cells(k);
+    }
+    dist
 }

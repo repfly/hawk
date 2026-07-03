@@ -20,7 +20,7 @@ use crate::storage::file_format::{
 };
 use crate::storage::lock::DatabaseLock;
 use crate::storage::raw_log::RawLog;
-use crate::storage::snapshot_store::{SnapshotEntry, SnapshotStore};
+use crate::storage::snapshot_store::{SnapshotAudit, SnapshotEntry, SnapshotStore};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenMode {
@@ -355,6 +355,26 @@ impl Database {
         dimension_key: &DimensionKey,
     ) -> Vec<SnapshotEntry> {
         self.snapshots.get_snapshots(variable, dimension_key)
+    }
+
+    /// Advisory snapshot-store summary for AUDIT STORAGE: entry count,
+    /// entries redundant at epsilon, and approximate serialized size.
+    pub fn audit_snapshots(&self, epsilon_bits: f64) -> SnapshotAudit {
+        SnapshotAudit {
+            entries: self.snapshots.total_entries(),
+            redundant: self.snapshots.count_redundant(epsilon_bits),
+            serialized_bytes: bincode::serialized_size(&self.snapshots).unwrap_or(0),
+        }
+    }
+
+    /// Explicit, opt-in snapshot GC: drop snapshots whose JSD to both
+    /// temporal neighbors is below `epsilon_bits`; the first and last
+    /// snapshot of every sequence are always kept. Deletes entries only —
+    /// no format change. Persisted on the next flush/close. Returns the
+    /// number of snapshots removed.
+    pub fn compact_snapshots(&mut self, epsilon_bits: f64) -> Result<usize> {
+        self.ensure_write_mode()?;
+        Ok(self.snapshots.compact(epsilon_bits))
     }
 
     pub fn stats(&self) -> DatabaseStats {

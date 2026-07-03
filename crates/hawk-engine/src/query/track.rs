@@ -8,6 +8,7 @@ use crate::query::cache::QueryCache;
 use crate::query::compare::execute_compare;
 use crate::query::result_types::{DistributionSummary, DriftEvent, TrackResult};
 
+#[allow(clippy::too_many_arguments)]
 pub fn execute_track(
     db: &Database,
     cache: &QueryCache,
@@ -16,6 +17,7 @@ pub fn execute_track(
     start: Option<&str>,
     end: Option<&str>,
     _granularity: Option<&str>,
+    min_cell_count: Option<u64>,
 ) -> Result<TrackResult> {
     let mut grouped = BTreeMap::<String, (String, HashMap<String, String>)>::new();
 
@@ -61,12 +63,21 @@ pub fn execute_track(
     for (time_label, (_key, mut dims_without_time)) in grouped {
         dims_without_time.insert("time".to_owned(), time_label.clone());
         if let Some(dist) = db.find_distribution_by_reference(variable, &dims_without_time) {
+            // Released entropies match the suppressed distributions.
+            let entropy = match min_cell_count {
+                Some(k) => {
+                    let mut released = dist.clone();
+                    released.suppress_small_cells(k);
+                    released.entropy
+                }
+                None => dist.entropy,
+            };
             time_points.push(time_label.clone());
-            entropy_series.push(dist.entropy);
+            entropy_series.push(entropy);
             snapshots.push(DistributionSummary {
                 reference: format!("{variable}|{time_label}"),
                 sample_count: dist.sample_count,
-                entropy: dist.entropy,
+                entropy,
                 version: dist.version,
             });
         }
@@ -84,7 +95,7 @@ pub fn execute_track(
         d_prev.insert("time".to_owned(), prev.clone());
         d_curr.insert("time".to_owned(), curr.clone());
 
-        let compare = execute_compare(db, cache, variable, &d_prev, &d_curr)?;
+        let compare = execute_compare(db, cache, variable, &d_prev, &d_curr, min_cell_count)?;
         drift_series.push(compare.jsd);
     }
 

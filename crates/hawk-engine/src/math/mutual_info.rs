@@ -34,6 +34,29 @@ pub fn mutual_information(joint_counts: &[Vec<u64>], total: u64) -> f64 {
     mi
 }
 
+/// Mutual information of a joint probability table, in bits. The table is
+/// expected to be normalized; empty or zero-mass tables yield 0.
+pub fn mutual_information_from_probs(joint: &[Vec<f64>]) -> f64 {
+    if joint.is_empty() || joint[0].is_empty() {
+        return 0.0;
+    }
+
+    let ny = joint[0].len();
+    let marginal_x: Vec<f64> = joint.iter().map(|row| row.iter().sum()).collect();
+    let marginal_y: Vec<f64> = (0..ny).map(|j| joint.iter().map(|row| row[j]).sum()).collect();
+
+    let mut mi = 0.0;
+    for (i, row) in joint.iter().enumerate() {
+        for (j, &p_xy) in row.iter().enumerate() {
+            if p_xy <= 0.0 {
+                continue;
+            }
+            mi += p_xy * (p_xy / (marginal_x[i] * marginal_y[j])).log2();
+        }
+    }
+    mi
+}
+
 /// Conditional mutual information: MI(X; Y | Z) = Σ_z P(z) * MI(X; Y | Z=z)
 ///
 /// Takes a slice of (joint_counts, total) pairs, one per conditioning value z.
@@ -119,6 +142,19 @@ mod tests {
         let indep = vec![vec![25, 25], vec![25, 25]];
         let cmi = conditional_mutual_information(&[(indep.clone(), 100), (indep, 100)]);
         assert!(cmi.abs() < 1e-10);
+    }
+
+    #[test]
+    fn mi_from_probs_matches_counts() {
+        use super::mutual_information_from_probs;
+        let counts = vec![vec![45, 5], vec![5, 45]];
+        let probs: Vec<Vec<f64>> = counts
+            .iter()
+            .map(|row| row.iter().map(|c| *c as f64 / 100.0).collect())
+            .collect();
+        let a = mutual_information(&counts, 100);
+        let b = mutual_information_from_probs(&probs);
+        assert!((a - b).abs() < 1e-12);
     }
 
     #[test]

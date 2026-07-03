@@ -61,7 +61,7 @@ fn create_define_ingest_compare_reopen_compare() {
         &mapping,
         IngestOptions {
             batch_size: 2,
-            show_progress: false,
+            ..IngestOptions::default()
         },
     )
     .expect("ingest csv");
