@@ -107,6 +107,17 @@ impl DistributionObject {
         self.last_updated = Utc::now().timestamp() as u64;
         self.sample_count = self.repr.total_count();
     }
+
+    /// Small-cell suppression at the read layer: fold categories with fewer
+    /// than `min_count` samples into `__unknown__` and recompute entropy so
+    /// released metrics stay consistent with the released distribution.
+    /// Storage is never touched — callers apply this to a clone.
+    pub fn suppress_small_cells(&mut self, min_count: u64) {
+        if self.repr.fold_small_categories(min_count) {
+            let counts = self.repr.value_count_vector();
+            self.entropy = crate::math::entropy(&counts, self.sample_count);
+        }
+    }
 }
 
 impl DistributionRepr {
@@ -254,6 +265,39 @@ impl DistributionRepr {
 
         *total_count += by;
         Ok(())
+    }
+
+    /// Fold categories with fewer than `min_count` samples into the
+    /// `__unknown__` bucket. Mass and total count are preserved; the folded
+    /// labels disappear. Histograms are never folded. Returns whether
+    /// anything changed.
+    pub fn fold_small_categories(&mut self, min_count: u64) -> bool {
+        let Self::Categorical {
+            categories,
+            counts,
+            unknown_count,
+            ..
+        } = self
+        else {
+            return false;
+        };
+        if counts.iter().all(|c| *c >= min_count) {
+            return false;
+        }
+
+        let mut kept_categories = Vec::with_capacity(categories.len());
+        let mut kept_counts = Vec::with_capacity(counts.len());
+        for (category, count) in categories.iter().zip(counts.iter()) {
+            if *count >= min_count {
+                kept_categories.push(category.clone());
+                kept_counts.push(*count);
+            } else {
+                *unknown_count += *count;
+            }
+        }
+        *categories = kept_categories;
+        *counts = kept_counts;
+        true
     }
 
     pub fn categorical_labels_with_unknown(&self) -> Option<Vec<String>> {

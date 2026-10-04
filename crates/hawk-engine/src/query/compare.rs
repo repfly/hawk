@@ -26,15 +26,17 @@ pub fn execute_compare(
     variable: &str,
     dims_a: &HashMap<String, String>,
     dims_b: &HashMap<String, String>,
+    min_cell_count: Option<u64>,
 ) -> Result<CompareResult> {
-    let dist_a = resolve_distribution(db, variable, dims_a)?;
-    let dist_b = resolve_distribution(db, variable, dims_b)?;
+    let dist_a = resolve_distribution(db, variable, dims_a, min_cell_count)?;
+    let dist_b = resolve_distribution(db, variable, dims_b, min_cell_count)?;
 
     let cache_key = CompareCacheKey {
         dist_id_a: dist_a.id,
         version_a: dist_a.version,
         dist_id_b: dist_b.id,
         version_b: dist_b.version,
+        min_cell_count,
     };
 
     if let Some(cached) = cache.get_compare(&cache_key) {

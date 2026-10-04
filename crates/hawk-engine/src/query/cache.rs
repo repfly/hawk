@@ -10,6 +10,7 @@ pub struct CompareCacheKey {
     pub version_a: u64,
     pub dist_id_b: u64,
     pub version_b: u64,
+    pub min_cell_count: Option<u64>,
 }
 
 pub struct QueryCache {

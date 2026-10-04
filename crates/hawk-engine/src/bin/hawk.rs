@@ -23,6 +23,7 @@ fn main() {
         eprintln!("Available queries:");
         eprintln!("  COMPARE <var> BETWEEN <dim:val> AND <dim:val>");
         eprintln!("  EXPLAIN <dim:val> VS <dim:val>");
+        eprintln!("  SURPRISE <dim:val> UNDER <dim:val> [ON <var>]");
         eprintln!("  TRACK <var> FROM <dim:val> [GRANULARITY <g>]");
         eprintln!("  SHOW <var> AT <dim:val>");
         eprintln!("  RANK <var> BY ENTROPY OVER <dim>");
@@ -31,6 +32,7 @@ fn main() {
         eprintln!("  CORRELATIONS [OVER <dim>] [LIMIT <n>]");
         eprintln!("  PAIRWISE <dim> ON <var> [USING jsd|hellinger|psi]");
         eprintln!("  NEAREST <dim:val> ON <dim> [LIMIT <n>] [USING jsd|hellinger|psi]");
+        eprintln!("  SUGGEST [LIMIT <n>]");
         eprintln!("  STATS");
         eprintln!("  SCHEMA");
         eprintln!("  DIMENSIONS [<name>]");

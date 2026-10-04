@@ -18,6 +18,12 @@ pub struct InferConfig {
     pub date_columns: Vec<String>,
     /// Granularity applied to date dimensions (e.g. "daily", "monthly").
     pub date_granularity: String,
+    /// Opt-in: pick each continuous variable's bin count by minimum
+    /// description length (see `math::mdl::mdl_bin_count`) instead of the
+    /// fixed default of 20. Deterministic; default off leaves inference
+    /// byte-identical to previous behavior.
+    #[serde(default)]
+    pub mdl_binning: bool,
 }
 
 impl Default for InferConfig {
@@ -27,6 +33,7 @@ impl Default for InferConfig {
             max_categories: 50,
             date_columns: Vec::new(),
             date_granularity: "daily".to_owned(),
+            mdl_binning: false,
         }
     }
 }
@@ -133,10 +140,16 @@ pub fn infer_schema(rows: &[Map<String, Value>], config: &InferConfig) -> Schema
             } else {
                 (max_val - min_val) * 0.001
             };
+            let bins = if config.mdl_binning {
+                let numeric: Vec<f64> = values.iter().filter_map(|v| as_f64(v)).collect();
+                crate::math::mdl_bin_count(&numeric, min_val, max_val + margin) as u32
+            } else {
+                20
+            };
             schema.variables.push(VariableDefinition {
                 name: col.clone(),
                 var_type: VariableType::Continuous {
-                    bins: 20,
+                    bins,
                     range: Some((min_val, max_val + margin)),
                 },
             });
@@ -276,6 +289,76 @@ mod tests {
             schema.variables[0].var_type,
             VariableType::Categorical { .. }
         ));
+    }
+
+    fn numeric_rows(name: &str, values: &[f64]) -> Vec<Map<String, Value>> {
+        values
+            .iter()
+            .map(|v| {
+                let mut m = Map::new();
+                m.insert(name.into(), Value::from(*v));
+                m
+            })
+            .collect()
+    }
+
+    fn inferred_bins(schema: &Schema, name: &str) -> u32 {
+        let var = schema
+            .variables
+            .iter()
+            .find(|v| v.name == name)
+            .expect("variable inferred");
+        match var.var_type {
+            VariableType::Continuous { bins, .. } => bins,
+            _ => panic!("expected continuous variable"),
+        }
+    }
+
+    #[test]
+    fn mdl_binning_default_off_keeps_fixed_bins() {
+        let rows = numeric_rows("score", &[0.1, 0.2, 0.3, 0.7, 0.8, 0.9]);
+        let schema = infer_schema(&rows, &InferConfig::default());
+        assert_eq!(inferred_bins(&schema, "score"), 20);
+    }
+
+    #[test]
+    fn mdl_binning_separates_bimodal_modes() {
+        // Two tight mid-range modes coarse binning merges, plus outliers
+        // pinning the range to [0, 1].
+        let mut values = vec![0.4; 490];
+        values.extend(std::iter::repeat_n(0.45, 490));
+        values.extend(std::iter::repeat_n(0.0, 10));
+        values.extend(std::iter::repeat_n(1.0, 10));
+        let rows = numeric_rows("score", &values);
+
+        let config = InferConfig {
+            mdl_binning: true,
+            ..InferConfig::default()
+        };
+        let schema = infer_schema(&rows, &config);
+        let bins = inferred_bins(&schema, "score");
+        assert!(bins >= 16, "expected mode-separating bins, got {}", bins);
+
+        // Deterministic.
+        let again = infer_schema(&rows, &config);
+        assert_eq!(bins, inferred_bins(&again, "score"));
+    }
+
+    #[test]
+    fn mdl_binning_near_constant_gets_few_bins() {
+        let mut values = vec![0.5; 990];
+        values.extend(std::iter::repeat_n(1.0, 10));
+        let rows = numeric_rows("score", &values);
+
+        let config = InferConfig {
+            mdl_binning: true,
+            ..InferConfig::default()
+        };
+        let schema = infer_schema(&rows, &config);
+        assert_eq!(
+            inferred_bins(&schema, "score"),
+            crate::math::MDL_BIN_CANDIDATES[0] as u32
+        );
     }
 
     #[test]

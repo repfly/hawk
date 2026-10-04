@@ -13,11 +13,12 @@ pub fn execute_explain(
     cache: &QueryCache,
     dims_a: &HashMap<String, String>,
     dims_b: &HashMap<String, String>,
+    min_cell_count: Option<u64>,
 ) -> Result<ExplainResult> {
     let mut contributions = Vec::new();
 
     for variable in &db.schema().variables {
-        let cmp = execute_compare(db, cache, &variable.name, dims_a, dims_b)?;
+        let cmp = execute_compare(db, cache, &variable.name, dims_a, dims_b, min_cell_count)?;
         contributions.push(VariableContribution {
             variable: variable.name.clone(),
             jsd: cmp.jsd,

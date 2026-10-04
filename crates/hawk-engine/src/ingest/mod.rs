@@ -9,5 +9,5 @@ pub mod pipeline;
 pub mod schema_inference;
 
 pub use column_mapper::IngestMapping;
-pub use pipeline::{IngestOptions, IngestReport, IngestionPipeline};
+pub use pipeline::{BatchSurprisal, IngestOptions, IngestReport, IngestionPipeline};
 pub use schema_inference::{infer_schema, InferConfig};
