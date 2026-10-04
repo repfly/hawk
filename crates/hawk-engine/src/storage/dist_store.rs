@@ -9,7 +9,7 @@ use chrono::Utc;
 
 use crate::core::{
     canonical_dimension_key, DimensionDefinition, DimensionKey, DistributionObject,
-    DistributionRepr, Schema, VariableDefinition,
+    DistributionRepr, HawkError, Schema, VariableDefinition,
 };
 use crate::math::entropy;
 
@@ -377,7 +377,8 @@ impl Database {
         if !epsilon_bits.is_finite() || epsilon_bits < 0.0 {
             return Err(HawkError::InvalidReference(
                 "snapshot epsilon must be finite and non-negative".to_owned(),
-            ));
+            )
+            .into());
         }
         Ok(self.snapshots.compact(epsilon_bits))
     }

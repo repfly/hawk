@@ -8,7 +8,7 @@ use hawk_engine::sql;
 use hawk_engine::storage::Database;
 
 fn ingest(db: &mut Database, path: &Path, mapping: &IngestMapping) -> anyhow::Result<IngestReport> {
-    Ok(IngestionPipeline::ingest_file(
+    IngestionPipeline::ingest_file(
         db,
         path,
         mapping,
@@ -18,7 +18,7 @@ fn ingest(db: &mut Database, path: &Path, mapping: &IngestMapping) -> anyhow::Re
             surprisal_report: true,
             ..IngestOptions::default()
         },
-    )?)
+    )
 }
 
 fn show(label: &str, report: &IngestReport) {
