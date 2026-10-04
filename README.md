@@ -3,35 +3,49 @@
 [![CI](https://github.com/repfly/hawk/actions/workflows/ci.yml/badge.svg)](https://github.com/repfly/hawk/actions/workflows/ci.yml)
 [![Audit](https://github.com/repfly/hawk/actions/workflows/audit.yml/badge.svg)](https://github.com/repfly/hawk/actions/workflows/audit.yml)
 
-The distribution database. Ingest rows, query distributions.
+The bits-native distribution database.
 
-Hawk digests data into compact probability distributions, discards the raw rows,
-and lets you query the distributions directly -- compare, explain, track drift,
-and discover correlations through an information-theoretic lens.
+Hawk digests rows into compact probability distributions and queries what those
+models know: surprise in incoming data, information retained in relationships,
+and changes that marginal distributions cannot reveal. Raw rows are discarded
+by default; answers come from stored distributions and joints.
+
+`SURPRISE` scores one slice under another's model in bits. `STRUCTURE` builds a
+dependency tree, and `COMPARE STRUCTURE` shows how its relationships changed.
 
 - **40,000x compression**: 209,527 news articles --> ~6KB on disk
 - **Microsecond queries**: no row scanning, distribution math runs directly
-- **SQL-like DSL**: 15 commands including COMPARE, EXPLAIN, TRACK, MI, NEAREST
+- **SQL-like DSL**: SURPRISE, STRUCTURE, ESTIMATE, COMPARE, EXPLAIN, TRACK, MI, and more
 - **10 built-in metrics**: JSD, KL, PSI, Hellinger, Wasserstein, MI, NMI, Cramer's V, conditional MI, entropy
 - **Distributions-only by default**: raw-log retention is opt-in
 
-```
-hawk> COMPARE category BETWEEN time:2013 AND time:2022
+Two slices can have identical marginals while their relationships change. The
+[structural drift example](crates/hawk-engine/examples/structural_drift.rs) produces
+this result from a controlled dataset:
 
-Metric              Value
-──────────────────  ──────────────────────────────────────────
-JSD                 0.684139
-PSI                 36.357643
-Hellinger           0.782895
-Entropy(A)          3.6248 bits
-Entropy(B)          3.1460 bits
-Samples             34583 vs 1398
+```text
+COMPARE channel BETWEEN time:2025-Q1 AND time:2025-Q2  → JSD 0.000000
+COMPARE plan BETWEEN time:2025-Q1 AND time:2025-Q2     → JSD 0.000000
+COMPARE churned BETWEEN time:2025-Q1 AND time:2025-Q2  → JSD 0.000000
 
---- Top Movers ---
-POLITICS            +0.2854  (0.000 → 0.285)  contrib=0.1427
-WELLNESS            -0.2150  (0.232 → 0.017)  contrib=0.0796
-U.S. NEWS           +0.1724  (0.000 → 0.172)  contrib=0.0862
+COMPARE STRUCTURE BETWEEN time:2025-Q1 AND time:2025-Q2
+
+Retained information   1.0000 → 0.5310 bits (−0.4690)
+Rewiring score         0.6532
+Dropped                churned — plan: 1.0000 bits
+Reweighted             channel — churned: 0.0000 → 0.5310 bits
 ```
+
+Churn follows plan in Q1 and channel in Q2. Run the demo, including assertions
+that every marginal stayed unchanged:
+
+```sh
+cargo run -p hawk-engine --example structural_drift
+cargo run -p hawk-engine --example surprise_scoring
+```
+
+See [SURPRISE](docs/surprise.md) and [STRUCTURE](docs/structure.md) for scoring,
+unknown-pair handling, deterministic trees, and JSON/CSV exports.
 
 ## Why it's different
 

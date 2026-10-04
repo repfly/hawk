@@ -66,19 +66,19 @@ Goal: `STRUCTURE AT <dim:val>` returns the Chow-Liu tree (best tree-shaped
 dependency model) built from pairwise MI; `COMPARE STRUCTURE BETWEEN a AND b`
 reports how variable *relationships* rewired — drift nobody else can query.
 
-- [ ] **T2.1** `math/mi_matrix.rs`: all-pairs MI at a dimension slice from
+- [x] **T2.1** `math/mi_matrix.rs`: all-pairs MI at a dimension slice from
       *stored* joints (`JointRepr`); pairs without a stored joint are reported
       as unknown, not silently zero. Reuses `math/mutual_info.rs`.
-- [ ] **T2.2** `math/chow_liu.rs`: maximum spanning tree (Kruskal) over the MI
+- [x] **T2.2** `math/chow_liu.rs`: maximum spanning tree (Kruskal) over the MI
       matrix → tree as edge list with MI weights + total retained information
       (Σ edge MI, in bits). Deterministic tie-breaking so trees are comparable.
-- [ ] **T2.3** `Statement::Structure { reference }` through the verb pipeline;
+- [x] **T2.3** `Statement::Structure { reference }` through the verb pipeline;
       formatter renders the edge list ranked by MI (ASCII tree optional, later).
-- [ ] **T2.4** Structural diff: edge-set comparison between two trees — added /
+- [x] **T2.4** Structural diff: edge-set comparison between two trees — added /
       dropped / re-weighted edges, MI-weighted rewiring score, plus a plain
       "retained information changed by X bits" headline.
       `Statement::CompareStructure { ref_a, ref_b }`.
-- [ ] **T2.5** Surface: MCP help_text, docs, example
+- [x] **T2.5** Surface: MCP help_text, docs, example
       (`examples/structural_drift.rs`), EXPORT support.
 - [ ] **T2.6** (stretch) Persist the tree per snapshot in `snapshot_store.rs` so
       `TRACK STRUCTURE` becomes possible later. Format-version bump + reopen

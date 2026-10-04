@@ -43,7 +43,9 @@ pub fn mutual_information_from_probs(joint: &[Vec<f64>]) -> f64 {
 
     let ny = joint[0].len();
     let marginal_x: Vec<f64> = joint.iter().map(|row| row.iter().sum()).collect();
-    let marginal_y: Vec<f64> = (0..ny).map(|j| joint.iter().map(|row| row[j]).sum()).collect();
+    let marginal_y: Vec<f64> = (0..ny)
+        .map(|j| joint.iter().map(|row| row[j]).sum())
+        .collect();
 
     let mut mi = 0.0;
     for (i, row) in joint.iter().enumerate() {

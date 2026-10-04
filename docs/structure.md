@@ -40,7 +40,7 @@ COMPARE STRUCTURE BETWEEN <dim:val> AND <dim:val>
 | `Added Edges` | In B's tree but not A's. |
 | `Dropped Edges` | In A's tree but not B's. |
 | `Re-weighted Edges` | Same edge in both trees; MI delta, sorted by magnitude. |
-| `Rewiring Score` | MI-weighted symmetric difference: (Σ MI of dropped + Σ MI of added) / (Σ MI of A's edges + Σ MI of B's edges), in [0, 1]. 0 = identical edge sets, 1 = completely disjoint trees. |
+| `Rewiring Score` | MI-weighted symmetric difference: (Σ MI of dropped + Σ MI of added) / (Σ MI of A's edges + Σ MI of B's edges), in [0, 1]. 0 = no positive-MI mass rewired, 1 = all positive-MI mass rewired. If both trees retain zero bits, the score is 0. |
 
 The point: two slices can have near-identical marginals while an association
 flips from one variable pair to another. `COMPARE churned BETWEEN ...` shows
@@ -64,5 +64,25 @@ EXPORT COMPARE STRUCTURE BETWEEN time:2025-Q1 AND time:2025-Q2 AS CSV
 - Nothing is persisted; both statements are computed from stored joints at
   query time.
 
-See `crates/hawk-engine/examples/structural_drift.rs` for a runnable demo of
-an association flip that marginals cannot see.
+## Run the checkpoint demo
+
+```sh
+cargo run -p hawk-engine --example structural_drift
+```
+
+The controlled example uses two 80-row slices with exactly identical marginals
+(JSD = 0 for channel, plan, and churned). In Q1, churn follows plan; in Q2 it
+follows channel. Retained information changes from 1.0000 to 0.5310 bits,
+with a rewiring score of 0.6532. The example asserts the unchanged marginals
+and structural change.
+
+Zero-MI edges still participate in deterministic tie-breaking. Consequently,
+channel–churned already exists as a zero-weight edge in Q1 and appears as a
+reweighted edge in the diff; churned–plan is dropped. Read added/dropped edges
+alongside reweighted edges to see the full change.
+
+Both verbs support JSON and CSV export of the same metric table, including
+unknown-pair warnings. JSON is an array of objects with `Metric` and `Value`
+keys; values are formatted strings, including units. CSV uses those two
+columns. Tree persistence (T2.6) remains deferred; no file-format change is
+needed.

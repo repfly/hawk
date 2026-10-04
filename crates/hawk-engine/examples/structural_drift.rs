@@ -75,8 +75,10 @@ fn main() -> anyhow::Result<()> {
 
     let engine = QueryEngine::default();
 
-    println!("--- Marginals barely move: COMPARE sees nothing ---");
+    println!("--- Marginals do not move: COMPARE sees nothing ---");
     for var in ["channel", "plan", "churned"] {
+        let comparison = engine.compare(&db, "time:2025-Q1", "time:2025-Q2", Some(var))?;
+        assert!(comparison.jsd.abs() < 1e-12, "{var} marginal moved");
         let out = sql::query(
             &db,
             &engine,
@@ -107,6 +109,15 @@ fn main() -> anyhow::Result<()> {
             "COMPARE STRUCTURE BETWEEN time:2025-Q1 AND time:2025-Q2"
         )?
     );
+
+    let diff = engine.compare_structure(&db, "time:2025-Q1", "time:2025-Q2")?;
+    assert_eq!(diff.added_edges.len(), 1);
+    assert_eq!(diff.dropped_edges.len(), 1);
+    assert!((diff.rewiring_score - 0.6532).abs() < 0.0001);
+    assert!(diff
+        .reweighted_edges
+        .iter()
+        .any(|edge| edge.var_a == "channel" && edge.var_b == "churned" && edge.delta > 0.5));
 
     println!("No marginal moved, yet the dependency tree rewired: churn detached");
     println!("from plan and attached to channel. Only the joints can see that.");

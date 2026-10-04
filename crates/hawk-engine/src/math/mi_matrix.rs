@@ -118,9 +118,18 @@ mod tests {
                 (indep.clone(), 100)
             })
         });
-        assert_eq!((m.edges[0].var_a.as_str(), m.edges[0].var_b.as_str()), ("b", "c"));
+        assert_eq!(
+            (m.edges[0].var_a.as_str(), m.edges[0].var_b.as_str()),
+            ("b", "c")
+        );
         // Tied zero-MI edges fall back to lexicographic order.
-        assert_eq!((m.edges[1].var_a.as_str(), m.edges[1].var_b.as_str()), ("a", "b"));
-        assert_eq!((m.edges[2].var_a.as_str(), m.edges[2].var_b.as_str()), ("a", "c"));
+        assert_eq!(
+            (m.edges[1].var_a.as_str(), m.edges[1].var_b.as_str()),
+            ("a", "b")
+        );
+        assert_eq!(
+            (m.edges[2].var_a.as_str(), m.edges[2].var_b.as_str()),
+            ("a", "c")
+        );
     }
 }
