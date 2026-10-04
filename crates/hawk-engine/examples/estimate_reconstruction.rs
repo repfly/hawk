@@ -68,7 +68,10 @@ fn main() -> anyhow::Result<()> {
     let engine = QueryEngine::default();
 
     println!("=== 1. The stored joint knows the dependency ===");
-    println!("{}", sql::query(&db, &engine, "MI plan, churned AT time:2025-Q1")?);
+    println!(
+        "{}",
+        sql::query(&db, &engine, "MI plan, churned AT time:2025-Q1")?
+    );
 
     println!("=== 2. ESTIMATE prefers the stored joint and says so ===");
     println!(
@@ -86,7 +89,7 @@ fn main() -> anyhow::Result<()> {
         stored.mi, stored.missing_information_bits
     );
     println!(
-        "  estimate only:  MI = {:.4} bits   missing = {:.4} bits (= max MI the marginals permit)",
+        "  estimate only:  MI = {:.4} bits   missing = {:.4} bits (upper bound on unknown dependency bits)",
         est.mi, est.missing_information_bits
     );
     println!("  cell-by-cell (estimate vs truth, truth always inside the Frechet bounds):");

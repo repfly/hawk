@@ -3,348 +3,77 @@
 [![CI](https://github.com/repfly/hawk/actions/workflows/ci.yml/badge.svg)](https://github.com/repfly/hawk/actions/workflows/ci.yml)
 [![Audit](https://github.com/repfly/hawk/actions/workflows/audit.yml/badge.svg)](https://github.com/repfly/hawk/actions/workflows/audit.yml)
 
-The bits-native distribution database.
+Hawk is a Rust database for storing distribution summaries and querying changes between them. It is intended for drift analysis, association analysis, and sharing aggregate statistics without keeping raw rows by default.
 
-Hawk digests rows into compact probability distributions and queries what those
-models know: surprise in incoming data, information retained in relationships,
-and changes that marginal distributions cannot reveal. Raw rows are discarded
-by default; answers come from stored distributions and joints.
+Hawk stores marginal and joint distributions for categorical and continuous variables, optionally grouped by dimensions such as time or region. Its query language includes `COMPARE`, `TRACK`, `EXPLAIN`, `SHOW`, `MI`, `CORRELATIONS`, and related commands.
 
-`SURPRISE` scores one slice under another's model in bits. `STRUCTURE` builds a
-dependency tree, and `COMPARE STRUCTURE` shows how its relationships changed.
-
-- **40,000x compression**: 209,527 news articles --> ~6KB on disk
-- **Microsecond queries**: no row scanning, distribution math runs directly
-- **SQL-like DSL**: SURPRISE, STRUCTURE, ESTIMATE, COMPARE, EXPLAIN, TRACK, MI, and more
-- **10 built-in metrics**: JSD, KL, PSI, Hellinger, Wasserstein, MI, NMI, Cramer's V, conditional MI, entropy
-- **Distributions-only by default**: raw-log retention is opt-in
-
-Two slices can have identical marginals while their relationships change. The
-[structural drift example](crates/hawk-engine/examples/structural_drift.rs) produces
-this result from a controlled dataset:
-
-```text
-COMPARE channel BETWEEN time:2025-Q1 AND time:2025-Q2  → JSD 0.000000
-COMPARE plan BETWEEN time:2025-Q1 AND time:2025-Q2     → JSD 0.000000
-COMPARE churned BETWEEN time:2025-Q1 AND time:2025-Q2  → JSD 0.000000
-
-COMPARE STRUCTURE BETWEEN time:2025-Q1 AND time:2025-Q2
-
-Retained information   1.0000 → 0.5310 bits (−0.4690)
-Rewiring score         0.6532
-Dropped                churned — plan: 1.0000 bits
-Reweighted             channel — churned: 0.0000 → 0.5310 bits
-```
-
-Churn follows plan in Q1 and channel in Q2. Run the demo, including assertions
-that every marginal stayed unchanged:
-
-```sh
-cargo run -p hawk-engine --example structural_drift
-cargo run -p hawk-engine --example surprise_scoring
-```
-
-See [SURPRISE](docs/surprise.md) and [STRUCTURE](docs/structure.md) for scoring,
-unknown-pair handling, deterministic trees, and JSON/CSV exports.
-
-## Why it's different
-
-No existing system combines persistent distribution storage, a query language for distributions, and information-theoretic metrics. The closest tools each cover one piece:
-
-| | Hawk | WhyLogs | Evidently | Prometheus | Druid / ClickHouse |
-|---|---|---|---|---|---|
-| Persists distributions, not rows | yes | yes (profiles) | no | yes (histograms) | no |
-| SQL-like query language | yes | no | no | PromQL (limited) | SQL (over rows) |
-| JSD / KL / PSI / MI as queries | yes | no | via Python API | no | no |
-| Joint distributions as first-class | yes | no | no | no | no |
-| Embeddable Rust library | yes | Python / Java | Python | no | no |
-| Temporal drift tracking as query | `TRACK` | SaaS dashboard | Python code | time-range query | time query |
-
-## Use cases
-
-### ML feature drift monitoring
-
-Track how feature distributions shift over time. Detect drift before model performance degrades.
-
-```sql
-TRACK feature_x FROM time:2024-01 GRANULARITY daily
-```
-
-### A/B test analysis
-
-Compare distributions between control and treatment groups without pulling raw data.
-
-```sql
-COMPARE conversion_bucket BETWEEN variant:control AND variant:treatment
-```
-
-### Data quality monitoring
-
-Scan all variables for unexpected distribution shifts between ingestion batches.
-
-```sql
-COMPARE category ACROSS ingest_date
-```
-
-### Model risk / regulatory PSI tracking
-
-Decompose total divergence across all variables to satisfy regulatory model validation requirements (SR 11-7, Basel III).
-
-```sql
-EXPLAIN time:2023Q4 VS time:2024Q4
-```
-
-### Privacy-preserving analytics sharing
-
-Distribute the database file; recipients query distributions without seeing raw rows. Raw-log retention is opt-in, so by default no individual records are stored.
-
-## When to use Hawk
-
-Use Hawk when you care about **how a distribution changed**, not about individual rows:
-
-- Drift / stability monitoring (PSI, JSD) embedded in an existing system
-- Sharing analytical summaries without shipping raw data
-- Association / dependency discovery (MI, Cramér's V) over categoricals
-- Giving an LLM agent statistical context instead of table access
-- A tiny, file-based artifact (kilobytes) instead of a warehouse
-
-**Not** a fit when you need to retrieve or join individual rows, run arbitrary SQL
-aggregations over raw data, do transactional writes, or need a formal
-privacy/anonymization guarantee — storing distributions reduces exposure but is
-**not** differential privacy. See [docs/positioning.md](docs/positioning.md) for
-the full breakdown and a tool comparison (whylogs, Evidently, DuckDB, DataSketches).
-
-## How it works
-
-1. **Define** variables (categorical or continuous) and dimensions (e.g., time)
-2. **Ingest** data from CSV, JSON, or Parquet -- Hawk builds histograms and contingency tables
-3. **Query** the distributions directly using a SQL-like language or web UI
-
-The database stores only the distribution summaries, not the raw data. Everything is built on entropy and information theory: JSD for comparison, mutual information for association, KL divergence for directionality.
+The project is pre-1.0. The query language, file format, and public APIs may change.
 
 ## Quick start
 
+Requirements: Rust 1.75 or newer.
+
 ```bash
-# Build
 cargo build --release
-
-# Start the web UI on 127.0.0.1:3000
-cargo run --release --bin hawk-server -- my_database.db 3000
-
-# Or use the CLI
-cargo run --release --bin hawk -- my_database.db
+cargo test
 ```
 
-## Examples
-
-Runnable demos are listed in [docs/examples/README.md](docs/examples/README.md):
+Start the local web server:
 
 ```bash
-cargo run -p hawk-engine --example drift_analysis
-cargo run -p hawk-engine --example privacy_safe_sharing
-cargo run -p hawk-engine --example association_discovery
+cargo run --release --bin hawk-server -- my_database.db 3000
 ```
 
-Python and MCP demos live under [examples/python](examples/python) and [examples/mcp](examples/mcp).
+Then open <http://127.0.0.1:3000>. Use the CLI instead with `cargo run --release --bin hawk -- my_database.db`.
 
-## Query language
+Runnable examples are listed in [docs/examples/README.md](docs/examples/README.md).
+
+## Query examples
 
 ```sql
--- Compare two distribution slices
-COMPARE category BETWEEN time:2013 AND time:2022
+-- Compare a variable in two slices
+COMPARE category BETWEEN time:2024 AND time:2025
 
--- With dimension filters
-COMPARE category BETWEEN time:2013 AND time:2022 WHERE region:US
+-- Track a variable over time
+TRACK category FROM time:2024 GRANULARITY monthly
 
--- Compare all pairs across a dimension
-COMPARE category ACROSS time
+-- Explain which variables contribute to a difference
+EXPLAIN time:2024 VS time:2025
 
--- What drives the divergence?
-EXPLAIN time:2013 VS time:2022
+-- Measure association between two variables
+MI author, category AT time:2024
 
--- Track drift over time
-TRACK category FROM time:2012 GRANULARITY yearly
+-- Inspect a distribution
+SHOW category AT time:2025 TOP 10
+```
 
--- Show a distribution (top 5 categories)
-SHOW category AT time:2022 TOP 5
+See [docs/surprise.md](docs/surprise.md) and [docs/structure.md](docs/structure.md) for query semantics and structural comparisons.
 
--- Entropy ranking
-RANK category BY ENTROPY OVER time
+## Metrics and exports
 
--- Mutual information between variables
-MI author, category AT time:2016
+The engine implements entropy, Jensen–Shannon divergence, KL divergence, PSI, Hellinger distance, Wasserstein distance, mutual information, normalized mutual information, Cramér's V, and conditional mutual information.
 
--- Conditional MI (controlling for time)
-CMI author, category GIVEN time
+Query results can be exported as JSON or CSV:
 
--- Find strongest associations
-CORRELATIONS OVER time LIMIT 10
-
--- Pairwise distance matrix
-PAIRWISE time ON category USING jsd
-
--- Nearest distributions
-NEAREST time:2022 ON time LIMIT 3 USING hellinger
-
--- Export results
-EXPORT STATS AS JSON
+```sql
 EXPORT COMPARE category ACROSS time AS CSV
-
--- Metadata
-STATS
-SCHEMA
-DIMENSIONS time
 ```
 
-### Example outputs
+## Ingestion and server mode
 
-**Drift tracking:**
-```
-hawk> TRACK category FROM time:2012 GRANULARITY yearly
-
-Time  Entropy  Drift (JSD)
-────  ───────  ────────────────
-2012  3.6310   0.0314
-2013  3.6248   0.3571 <- shift
-2014  4.8237   0.1656 <- shift
-2015  4.4118   0.0561 <- shift
-2018  3.3050   0.1775 <- shift
-2020  3.0430   0.0372
-2021  2.9053   0.0286
-2022  3.1460   0.0000
-```
-
-**Explain divergence:**
-```
-hawk> EXPLAIN time:2013 VS time:2022
-
-Variable          JSD       Fraction
-────────────────  ────────  ──────────────
-TOTAL             0.830323  100.0%
-category          0.684139  82.4%
-  POLITICS        +0.2854   contrib=0.1427
-  WELLNESS        -0.2150   contrib=0.0796
-  U.S. NEWS       +0.1724   contrib=0.0862
-author            0.146184  17.6%
-  Mary Papenfuss  +0.0715   contrib=0.0358
-```
-
-**Association strength:**
-```
-hawk> MI author, category AT time:2016
-
-Metric       Value
-───────────  ───────────
-MI           1.7794 bits
-NMI          0.5537
-Cramer's V   0.5186
-Samples      5688
-Strength     strong
-```
-
-## Metrics
-
-All metrics are rooted in information theory:
-
-| Metric | Formula | Range | What it measures |
-|--------|---------|-------|------------------|
-| **Entropy** | H(X) = -Σ p_i log p_i | [0, log k] | Distribution uncertainty |
-| **JSD** | H(M) - ½H(P) - ½H(Q) | [0, 1] | Symmetric divergence |
-| **KL divergence** | Σ p_i log(p_i/q_i) | [0, ∞) | Directional divergence |
-| **PSI** | KL(P\|\|Q) + KL(Q\|\|P) | [0, ∞) | Population stability (<0.1 stable, >0.2 significant) |
-| **Hellinger** | (1/√2)√(Σ(√p-√q)²) | [0, 1] | Bounded symmetric distance |
-| **Wasserstein** | Σ\|CDF_P - CDF_Q\|·Δx | [0, ∞) | Earth mover's distance (histograms only) |
-| **MI** | H(X)+H(Y)-H(X,Y) | [0, ∞) | Shared information between variables |
-| **NMI** | MI / min(H(X),H(Y)) | [0, 1] | Normalized association strength |
-| **Cramer's V** | √(χ²/(n·min(r-1,c-1))) | [0, 1] | Effect size for categorical association |
-| **Conditional MI** | I(X;Y\|Z) = H(X,Z)+H(Y,Z)-H(X,Y,Z)-H(Z) | [0, ∞) | Association between two variables controlling for a third |
-
-## Web UI
+The server accepts JSON records at `/ingest` when ingestion is enabled:
 
 ```bash
-cargo run --release --bin hawk-server -- my_database.db 3000
-# Open http://localhost:3000
-```
-
-The server defaults to `127.0.0.1` for local use. Use `--bind 0.0.0.0` only behind a trusted reverse proxy or on a trusted network.
-
-Features:
-- Interactive query input with htmx (no page reloads)
-- SVG charts: diverging bar charts for COMPARE, entropy timelines for TRACK, distribution bars for SHOW, heatmaps for PAIRWISE
-- Clickable schema sidebar
-- Query history (persisted in localStorage)
-- Streaming ingestion endpoint: `POST /ingest` with JSON body
-- Health and version endpoints: `GET /health`, `GET /version`
-
-Operational flags:
-
-```bash
-cargo run --release --bin hawk-server -- my_database.db 3000 \
-  --bind 127.0.0.1 \
-  --max-body-bytes 1048576 \
-  --max-batch-size 1000 \
-  --auth-token "$HAWK_SERVER_TOKEN"
-```
-
-Use `--readonly` or `--disable-ingest` to reject `/ingest` and `/flush`.
-
-## Streaming ingestion
-
-The web server accepts live data via HTTP when ingest is enabled. If `--auth-token` or `HAWK_SERVER_TOKEN` is set, send `Authorization: Bearer <token>`.
-
-```bash
-# Single record
 curl -X POST http://localhost:3000/ingest \
   -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $HAWK_SERVER_TOKEN" \
-  -d '{"category": "TECH", "date": "2024-01-15"}'
-
-# Batch
-curl -X POST http://localhost:3000/ingest \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $HAWK_SERVER_TOKEN" \
-  -d '[{"category": "TECH", "date": "2024-01-15"}, {"category": "SPORTS", "date": "2024-01-16"}]'
+  -d '{"category":"TECH","date":"2024-01-15"}'
 ```
 
-Payload limits are enforced by `--max-body-bytes` and `--max-batch-size`. For production-like deployments, terminate TLS and add rate limits at a reverse proxy. Raw-log retention can store original records and should be treated as sensitive.
+Use `--readonly` or `--disable-ingest` to disable writes. Set `--auth-token` or `HAWK_SERVER_TOKEN` when the endpoint needs authentication. The server binds to `127.0.0.1` by default.
 
-## Storage format
+Raw-log retention is optional. Distribution summaries are not a formal privacy or anonymization guarantee; treat retained raw records and sensitive aggregates accordingly.
 
-Hawk uses a custom binary format with zstd compression:
-
-```
-[4 bytes] "HAWK" magic
-[4 bytes] format version (u32 LE)
-[rest]    zstd-compressed bincode payload
-```
-
-A database that digests 209K news articles (42 categories, 20 authors, 11 years) occupies **~6KB on disk**.
-
-Benchmark and compression methodology lives in [docs/benchmarks.md](docs/benchmarks.md), including deterministic dataset generation and copy-pasteable Criterion commands.
-
-| File | Contents |
-|------|----------|
-| `meta.edb` | Schema, counters, config |
-| `distributions.edb` | All marginal distributions + joint contingency tables |
-| `dist_index.edb` | Lookup index for (variable, dimension_key) -> distribution |
-| `snapshots.edb` | Historical distribution snapshots |
-
-## Architecture
-
-Single library crate (`hawk-engine`) with modules:
-
-```
-hawk_engine::core       Types: Distribution, Joint, Schema, DimensionKey
-hawk_engine::math       Entropy, JSD, KL, PSI, Hellinger, MI, NMI, Cramer's V, Wasserstein
-hawk_engine::storage    Binary file storage, zstd compression, mmap reads, locking
-hawk_engine::ingest     CSV/JSON/Parquet ingestion, rayon parallelism, schema inference
-hawk_engine::query      Query engine: compare, explain, track, pairwise, correlations
-hawk_engine::sql        SQL-like DSL: tokenizer, recursive descent parser, executor
-```
-
-Plus a separate binary crate (`hawk-server`) for the web UI: axum + htmx, SVG charts, streaming ingestion endpoint.
-
-## Using as a library
+## Use as a Rust library
 
 ```toml
 [dependencies]
@@ -352,73 +81,43 @@ hawk-engine = "0.1"
 ```
 
 ```rust
-use hawk_engine::storage::{Database, OpenMode};
 use hawk_engine::query::QueryEngine;
+use hawk_engine::storage::{Database, OpenMode};
 
 let db = Database::open("my.db", OpenMode::ReadOnly).unwrap();
 let engine = QueryEngine::default();
-let result = engine.compare(&db, "time:2023", "time:2024", None).unwrap();
+let result = engine.compare(&db, "time:2024", "time:2025", None).unwrap();
 println!("JSD = {:.6}", result.jsd);
 ```
 
-Published to [crates.io](https://crates.io/crates/hawk-engine).
+The crate is published on [crates.io](https://crates.io/crates/hawk-engine).
 
-## Python
+## Python and MCP
+
+Build the Python bindings with:
 
 ```bash
 maturin develop -m crates/hawk-python/Cargo.toml --release
 ```
 
-```python
-import hawk_engine
-
-db = hawk_engine.HawkDB.create("./demo_db")
-db.ingest("data.csv")
-print(db.query("COMPARE category BETWEEN time:2024 AND time:2025"))
-db.close()
-```
-
-Full install, API reference, and error handling are in [docs/python.md](docs/python.md).
-
-## MCP (agent-safe analytics)
-
-Expose distribution summaries to an LLM agent over MCP — the agent sees JSD/PSI,
-top movers, and associations, not raw rows:
+Python documentation is in [docs/python.md](docs/python.md). To expose a read-only database over MCP:
 
 ```bash
 cargo run -p hawk-mcp -- --db ./my_hawk_db --readonly
 ```
 
-Tool list, client config, example prompts, and the privacy warning are in
-[docs/mcp.md](docs/mcp.md).
+See [docs/mcp.md](docs/mcp.md) for configuration and limitations.
 
-## Building
+## Project layout
 
-```bash
-cargo build --release
-cargo test
-```
+- `crates/hawk-engine` — core types, ingestion, storage, metrics, and query engine
+- `crates/hawk-server` — web UI and HTTP ingestion endpoint
+- `crates/hawk-python` — Python bindings
+- `crates/hawk-mcp` — MCP server
+- `docs` — concepts, examples, compatibility, and development notes
 
-Requirements: Rust 1.75+
+## Contributing and license
 
-## Project maturity
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidance. Compatibility notes are in [docs/compatibility.md](docs/compatibility.md), and release notes are in [CHANGELOG.md](CHANGELOG.md).
 
-Hawk is **pre-1.0**. The query language, storage format, and public APIs may
-change between minor versions. The storage format is versioned and breaking
-format changes are noted in the [CHANGELOG](CHANGELOG.md); see
-[docs/compatibility.md](docs/compatibility.md) for the compatibility policy.
-
-## Releases
-
-Release notes live in the [CHANGELOG](CHANGELOG.md). Compatibility guarantees
-(storage format, query language, Rust/Python/MCP surfaces) are documented in
-[docs/compatibility.md](docs/compatibility.md), and the tag-driven release flow is
-in [docs/release-process.md](docs/release-process.md).
-
-## Contributing
-
-Start with [CONTRIBUTING.md](CONTRIBUTING.md). Development architecture notes are in [docs/development.md](docs/development.md), storage compatibility notes are in [docs/file-format.md](docs/file-format.md), and vulnerability reporting guidance is in [SECURITY.md](SECURITY.md).
-
-## License
-
-MIT
+Hawk is licensed under the MIT license.

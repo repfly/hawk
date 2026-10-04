@@ -100,6 +100,18 @@ fn stored_joint_is_preferred_and_flagged_observed() {
     assert!((est.mi - 1.0).abs() < 1e-9);
     assert!((est.mi_upper_bound - 1.0).abs() < 1e-9);
     assert_eq!(est.ipf_iterations, 0);
+    let reversed = qe.estimate(&db, "churned", "plan", "time:2025-Q1").unwrap();
+    assert_eq!(
+        serde_json::to_value(&est).unwrap(),
+        serde_json::to_value(&reversed).unwrap()
+    );
+    for cell in &est.cells {
+        let expected = match (cell.label_a.as_str(), cell.label_b.as_str()) {
+            ("yes", "free") | ("no", "paid") => 0.5,
+            _ => 0.0,
+        };
+        assert!((cell.probability - expected).abs() < 1e-12);
+    }
 
     // Fréchet bounds are still reported and contain every cell.
     assert_eq!(est.cells.len(), 4);
@@ -253,8 +265,8 @@ fn mi_falls_back_to_estimate_with_warning() {
     assert!(!text.contains("Strength"), "must not pose as a stored MI");
 
     // A stored pair is untouched by the fallback path.
-    let out = hawk_engine::sql::query(&db, &qe, "MI plan, churned AT time:2025-Q1")
-        .expect("mi stored");
+    let out =
+        hawk_engine::sql::query(&db, &qe, "MI plan, churned AT time:2025-Q1").expect("mi stored");
     assert!(out.to_string().contains("Strength"));
 
     // Fallback off: the original error surfaces.
@@ -262,5 +274,43 @@ fn mi_falls_back_to_estimate_with_warning() {
     let err = hawk_engine::sql::query(&db, &strict, "MI channel, churned AT time:2025-Q1")
         .expect_err("must error without fallback");
     assert!(err.to_string().contains("no joint distribution defined"));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn missing_marginals_remain_errors_with_fallback_enabled() {
+    let root = temp_db("missing");
+    let db = build_db(&root);
+    let qe = QueryEngine::default();
+    assert!(qe
+        .estimate(&db, "channel", "absent", "time:2025-Q1")
+        .is_err());
+    assert!(qe
+        .estimate(&db, "channel", "churned", "time:missing")
+        .is_err());
+    assert!(hawk_engine::sql::query(&db, &qe, "MI channel, absent AT time:2025-Q1").is_err());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn deterministic_marginal_leaves_no_unknown_dependency_bits() {
+    let root = temp_db("deterministic");
+    let mut db = build_db(&root);
+    let rows = vec![
+        row("2025-Q2", "mobile", "free", "yes", 0.1),
+        row("2025-Q2", "mobile", "paid", "no", 0.9),
+    ];
+    let schema = db.schema().clone();
+    apply_batch(&mut db, &schema, &rows).unwrap();
+    let est = QueryEngine::default()
+        .estimate(&db, "channel", "churned", "time:2025-Q2")
+        .unwrap();
+    assert!(!est.observed);
+    assert!(est.missing_information_bits.abs() < 1e-12);
+    assert!(est.mi_upper_bound.abs() < 1e-12);
+    for cell in &est.cells {
+        assert!((cell.upper_bound - cell.lower_bound).abs() < 1e-12);
+        assert!((cell.probability - cell.lower_bound).abs() < 1e-12);
+    }
     let _ = std::fs::remove_dir_all(root);
 }

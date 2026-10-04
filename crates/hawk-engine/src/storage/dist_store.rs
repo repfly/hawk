@@ -374,6 +374,11 @@ impl Database {
     /// number of snapshots removed.
     pub fn compact_snapshots(&mut self, epsilon_bits: f64) -> Result<usize> {
         self.ensure_write_mode()?;
+        if !epsilon_bits.is_finite() || epsilon_bits < 0.0 {
+            return Err(HawkError::InvalidReference(
+                "snapshot epsilon must be finite and non-negative".to_owned(),
+            ));
+        }
         Ok(self.snapshots.compact(epsilon_bits))
     }
 

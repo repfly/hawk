@@ -1,7 +1,6 @@
 use crate::core::{HawkError, Result};
 
-/// L1 convergence tolerance: a sweep that changes the table by less than this
-/// (summed over all cells) is considered converged.
+/// L1 convergence tolerance for each fitted marginal against its target.
 pub const IPF_TOLERANCE: f64 = 1e-10;
 pub const IPF_MAX_ITERATIONS: usize = 1_000;
 
@@ -39,6 +38,11 @@ pub fn ipf(
     tolerance: f64,
     max_iterations: usize,
 ) -> Result<IpfResult> {
+    if !tolerance.is_finite() || tolerance <= 0.0 {
+        return Err(HawkError::TypeMismatch(
+            "IPF tolerance must be finite and positive".to_owned(),
+        ));
+    }
     let p_a = normalize_marginal(target_a, "A")?;
     let p_b = normalize_marginal(target_b, "B")?;
 
@@ -58,15 +62,17 @@ pub fn ipf(
         ));
     }
 
-    let total: f64 = initial.iter().flatten().sum();
-    if total <= 0.0 {
+    let scale = initial.iter().flatten().copied().fold(0.0, f64::max);
+    if scale == 0.0 {
         return Err(HawkError::TypeMismatch(
             "IPF initial table has zero total mass".to_owned(),
         ));
     }
+    // Scale before summation so finite weights cannot overflow their total.
+    let total: f64 = initial.iter().flatten().map(|c| c / scale).sum();
     let mut joint: Vec<Vec<f64>> = initial
         .iter()
-        .map(|row| row.iter().map(|c| c / total).collect())
+        .map(|row| row.iter().map(|c| (c / scale) / total).collect())
         .collect();
 
     let mut iterations = 0;
@@ -80,9 +86,8 @@ pub fn ipf(
         for (row, &target) in joint.iter_mut().zip(&p_a) {
             let sum: f64 = row.iter().sum();
             if sum > 0.0 {
-                let factor = target / sum;
                 for cell in row.iter_mut() {
-                    *cell *= factor;
+                    *cell = (*cell / sum) * target;
                 }
             } else if target > 0.0 {
                 // Structural zeros in `initial` make this marginal unreachable.
@@ -96,9 +101,8 @@ pub fn ipf(
         for (j, &target) in p_b.iter().enumerate() {
             let sum: f64 = joint.iter().map(|row| row[j]).sum();
             if sum > 0.0 {
-                let factor = target / sum;
                 for row in joint.iter_mut() {
-                    row[j] *= factor;
+                    row[j] = (row[j] / sum) * target;
                 }
             } else if target > 0.0 {
                 return Err(HawkError::TypeMismatch(
@@ -114,7 +118,19 @@ pub fn ipf(
             .zip(previous.iter().flatten())
             .map(|(a, b)| (a - b).abs())
             .sum();
-        if l1_change < tolerance {
+        // A stationary sweep does not imply feasible marginals: structural
+        // zeros can cause row and column scaling to undo one another forever.
+        let row_error: f64 = joint
+            .iter()
+            .zip(&p_a)
+            .map(|(row, target)| (row.iter().sum::<f64>() - target).abs())
+            .sum();
+        let col_error: f64 = p_b
+            .iter()
+            .enumerate()
+            .map(|(j, target)| (joint.iter().map(|row| row[j]).sum::<f64>() - target).abs())
+            .sum();
+        if row_error <= tolerance && col_error <= tolerance {
             converged = true;
             break;
         }
@@ -141,14 +157,15 @@ fn normalize_marginal(target: &[f64], name: &str) -> Result<Vec<f64>> {
             name
         )));
     }
-    let total: f64 = target.iter().sum();
-    if total <= 0.0 {
+    let scale = target.iter().copied().fold(0.0, f64::max);
+    if scale == 0.0 {
         return Err(HawkError::TypeMismatch(format!(
             "IPF target marginal {} has zero mass",
             name
         )));
     }
-    Ok(target.iter().map(|p| p / total).collect())
+    let total: f64 = target.iter().map(|p| p / scale).sum();
+    Ok(target.iter().map(|p| (p / scale) / total).collect())
 }
 
 #[cfg(test)]
@@ -265,6 +282,55 @@ mod tests {
     fn structural_zero_row_with_positive_target_is_an_error() {
         let initial = vec![vec![0.0, 0.0], vec![1.0, 1.0]];
         assert!(ipf(&initial, &[0.5, 0.5], &[0.5, 0.5], 1e-10, 10).is_err());
+    }
+
+    #[test]
+    fn incompatible_structural_support_does_not_report_convergence() {
+        let initial = vec![vec![1.0, 0.0], vec![0.0, 1.0]];
+        let result = ipf(&initial, &[0.8, 0.2], &[0.2, 0.8], 1e-10, 10).unwrap();
+        assert_eq!(result.l1_change, 0.0);
+        assert!(!result.converged);
+        assert_eq!(result.iterations, 10);
+    }
+
+    #[test]
+    fn finite_weights_with_overflowing_sums_are_normalized() {
+        let initial = vec![vec![f64::MAX; 2]; 2];
+        let target = [f64::MAX; 2];
+        let result = ipf(&initial, &target, &target, IPF_TOLERANCE, 10).unwrap();
+        assert!(result.converged);
+        assert!(result
+            .joint
+            .iter()
+            .flatten()
+            .all(|p| (*p - 0.25).abs() < 1e-12));
+    }
+
+    #[test]
+    fn rescaling_tiny_positive_support_stays_finite() {
+        let initial = vec![vec![1e-310, 1e-310], vec![0.5, 0.5]];
+        let result = ipf(&initial, &[0.5, 0.5], &[0.5, 0.5], IPF_TOLERANCE, 10).unwrap();
+        assert!(result.converged);
+        assert!(result
+            .joint
+            .iter()
+            .flatten()
+            .all(|p| (*p - 0.25).abs() < 1e-12));
+    }
+
+    #[test]
+    fn invalid_tolerance_is_rejected() {
+        for tolerance in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            assert!(ipf(&[vec![1.0]], &[1.0], &[1.0], tolerance, 10).is_err());
+        }
+    }
+
+    #[test]
+    fn invalid_weights_are_rejected() {
+        for value in [-1.0, f64::NAN, f64::INFINITY] {
+            assert!(maxent_joint(&[value, 1.0], &[1.0]).is_err());
+            assert!(ipf(&[vec![value]], &[1.0], &[1.0], IPF_TOLERANCE, 10).is_err());
+        }
     }
 
     #[test]

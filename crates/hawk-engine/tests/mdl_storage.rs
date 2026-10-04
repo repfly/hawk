@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use hawk_engine::core::{
-    dimension_key_from_pairs, DimensionDefinition, DistributionRepr, JointRepr,
-    VariableDefinition, VariableType,
+    dimension_key_from_pairs, DimensionDefinition, DistributionRepr, JointRepr, VariableDefinition,
+    VariableType,
 };
 use hawk_engine::query::QueryEngine;
 use hawk_engine::sql::{executor, parser};
@@ -40,7 +40,8 @@ fn build_db(root: &PathBuf) -> Database {
         granularity: None,
     })
     .expect("define time");
-    db.define_joint("category", "sentiment").expect("define joint");
+    db.define_joint("category", "sentiment")
+        .expect("define joint");
 
     let key = dimension_key_from_pairs([("time", "2024")]);
     db.update_distribution("category", &key, |dist| {
@@ -69,10 +70,7 @@ fn build_db(root: &PathBuf) -> Database {
         for hist in histograms.iter_mut() {
             hist.increment_histogram(3, 10);
         }
-        *total_count = histograms
-            .iter()
-            .map(DistributionRepr::total_count)
-            .sum();
+        *total_count = histograms.iter().map(DistributionRepr::total_count).sum();
     }
 
     db
@@ -193,8 +191,14 @@ fn compact_snapshots_survives_reopen_with_invariants() {
     let after = reopened.snapshots_for("category", &key);
     assert_eq!(after.len(), 3);
     // First and last snapshots always survive.
-    assert_eq!(after.first().unwrap().version, before.first().unwrap().version);
-    assert_eq!(after.last().unwrap().version, before.last().unwrap().version);
+    assert_eq!(
+        after.first().unwrap().version,
+        before.first().unwrap().version
+    );
+    assert_eq!(
+        after.last().unwrap().version,
+        before.last().unwrap().version
+    );
     // Live distribution untouched.
     let dist = reopened
         .get_distribution("category", &key)
@@ -215,4 +219,17 @@ fn compact_snapshots_requires_write_mode() {
 
     let mut db = Database::open(&root, OpenMode::ReadOnly).expect("reopen read-only");
     assert!(db.compact_snapshots(0.01).is_err());
+}
+
+#[test]
+fn compact_snapshots_rejects_invalid_epsilon_without_mutation() {
+    let root = temp_db_dir("compact-invalid");
+    let mut db = build_db(&root);
+    let key = dimension_key_from_pairs([("time", "2024")]);
+    let before = db.snapshots_for("category", &key).len();
+    for epsilon in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -0.01] {
+        assert!(db.compact_snapshots(epsilon).is_err());
+        assert_eq!(db.snapshots_for("category", &key).len(), before);
+    }
+    assert_eq!(db.compact_snapshots(0.0).unwrap(), 0);
 }

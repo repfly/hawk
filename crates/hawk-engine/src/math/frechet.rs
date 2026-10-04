@@ -32,6 +32,31 @@ pub fn mi_upper_bound(marginal_a: &[f64], marginal_b: &[f64]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::{frechet_bounds, mi_upper_bound};
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn bounds_contain_arbitrary_joint_and_its_mi(
+            weights in proptest::collection::vec(0.0f64..100.0, 6),
+        ) {
+            let total: f64 = weights.iter().sum();
+            prop_assume!(total > 0.0);
+            let joint: Vec<Vec<f64>> = weights.chunks(3)
+                .map(|row| row.iter().map(|p| p / total).collect()).collect();
+            let a: Vec<f64> = joint.iter().map(|row| row.iter().sum()).collect();
+            let b: Vec<f64> = (0..3).map(|j| joint.iter().map(|row| row[j]).sum()).collect();
+            let bounds = frechet_bounds(&a, &b);
+            for (i, row) in joint.iter().enumerate() {
+                for (j, p) in row.iter().enumerate() {
+                    prop_assert!(*p >= bounds.lower[i][j] - 1e-12);
+                    prop_assert!(*p <= bounds.upper[i][j] + 1e-12);
+                }
+            }
+            let mi = crate::math::mutual_information_from_probs(&joint);
+            prop_assert!(mi >= -1e-12);
+            prop_assert!(mi <= mi_upper_bound(&a, &b) + 1e-12);
+        }
+    }
 
     #[test]
     fn bounds_contain_independence_product() {
@@ -63,7 +88,11 @@ mod tests {
     fn uniform_marginals_have_zero_lower_bounds() {
         let bounds = frechet_bounds(&[0.25; 4], &[0.25; 4]);
         assert!(bounds.lower.iter().flatten().all(|c| *c == 0.0));
-        assert!(bounds.upper.iter().flatten().all(|c| (c - 0.25).abs() < 1e-12));
+        assert!(bounds
+            .upper
+            .iter()
+            .flatten()
+            .all(|c| (c - 0.25).abs() < 1e-12));
     }
 
     #[test]

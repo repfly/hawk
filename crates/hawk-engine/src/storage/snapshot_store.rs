@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::core::{canonical_dimension_key, DimensionKey, DistributionObject};
+use crate::core::{canonical_dimension_key, DimensionKey, DistributionObject, DistributionRepr};
 use crate::math::jsd;
 
 /// Epsilon used by the AUDIT STORAGE advisory line. JSD (base 2) is at most
@@ -97,7 +97,7 @@ impl SnapshotStore {
 /// shape mismatches are never dropped.
 fn redundant_indices(seq: &[SnapshotEntry], epsilon_bits: f64) -> Vec<usize> {
     let mut drop = Vec::new();
-    if seq.len() < 3 {
+    if seq.len() < 3 || !epsilon_bits.is_finite() || epsilon_bits <= 0.0 {
         return drop;
     }
 
@@ -116,6 +116,41 @@ fn redundant_indices(seq: &[SnapshotEntry], epsilon_bits: f64) -> Vec<usize> {
 }
 
 fn snapshot_jsd(a: &SnapshotEntry, b: &SnapshotEntry) -> Option<f64> {
+    // Equal vector lengths do not imply equal events: a count at index zero
+    // can name a different category or cover a different numeric interval.
+    // Conservatively retain changed schemas instead of inventing a rebinning.
+    let compatible = match (&a.distribution.repr, &b.distribution.repr) {
+        (
+            DistributionRepr::Categorical {
+                categories: ac,
+                counts: av,
+                ..
+            },
+            DistributionRepr::Categorical {
+                categories: bc,
+                counts: bv,
+                ..
+            },
+        ) => ac == bc && ac.len() == av.len() && bc.len() == bv.len(),
+        (
+            DistributionRepr::Histogram {
+                min: amin,
+                max: amax,
+                bin_counts: ac,
+                ..
+            },
+            DistributionRepr::Histogram {
+                min: bmin,
+                max: bmax,
+                bin_counts: bc,
+                ..
+            },
+        ) => amin == bmin && amax == bmax && ac.len() == bc.len(),
+        _ => false,
+    };
+    if !compatible {
+        return None;
+    }
     let a_counts = a.distribution.repr.value_count_vector();
     let b_counts = b.distribution.repr.value_count_vector();
     if a_counts.len() != b_counts.len() {
@@ -153,11 +188,55 @@ mod tests {
     }
 
     #[test]
+    fn invalid_thresholds_do_not_discard_history() {
+        for epsilon in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -1.0, 0.0] {
+            let mut store = snapshot_store_with(&[[50, 50]; 3]);
+            assert_eq!(store.count_redundant(epsilon), 0);
+            assert_eq!(store.compact(epsilon), 0);
+            assert_eq!(store.total_entries(), 3);
+        }
+    }
+
+    #[test]
+    fn equal_length_vectors_with_different_meaning_are_preserved() {
+        let category = |labels: &[&str]| DistributionRepr::Categorical {
+            categories: labels.iter().map(|s| (*s).into()).collect(),
+            counts: vec![100, 0],
+            unknown_count: 0,
+            total_count: 100,
+        };
+        let histogram = |min, max, counts: Vec<u64>| DistributionRepr::Histogram {
+            min,
+            max,
+            total_count: counts.iter().sum(),
+            bin_counts: counts,
+        };
+        for (a, b) in [
+            (category(&["a", "b"]), category(&["b", "a"])),
+            (category(&["a", "b"]), category(&["c", "d"])),
+            (
+                histogram(0.0, 1.0, vec![100, 0]),
+                histogram(1.0, 2.0, vec![100, 0]),
+            ),
+            (category(&["a", "b"]), histogram(0.0, 1.0, vec![100, 0, 0])),
+        ] {
+            let mut store = SnapshotStore::default();
+            for (i, repr) in [a.clone(), b, a].into_iter().enumerate() {
+                let mut dist = DistributionObject::new(1, "var", Default::default(), repr);
+                dist.version = i as u64;
+                store.push_snapshot(&dist);
+            }
+            assert_eq!(store.count_redundant(0.01), 0);
+            assert_eq!(store.compact(0.01), 0);
+            assert_eq!(store.total_entries(), 3);
+        }
+    }
+
+    #[test]
     fn compact_drops_redundant_interior_snapshots() {
         // Snapshots 2 and 3 are near-identical to both neighbors; snapshot 4
         // precedes a jump, so it is kept as the last pre-jump state.
-        let mut store =
-            snapshot_store_with(&[[50, 50], [50, 51], [51, 50], [50, 50], [90, 10]]);
+        let mut store = snapshot_store_with(&[[50, 50], [50, 51], [51, 50], [50, 50], [90, 10]]);
         let removed = store.compact(0.01);
         assert_eq!(removed, 2);
 
@@ -195,8 +274,7 @@ mod tests {
 
     #[test]
     fn count_redundant_matches_compact_without_mutating() {
-        let mut store =
-            snapshot_store_with(&[[50, 50], [50, 51], [51, 50], [50, 50], [90, 10]]);
+        let mut store = snapshot_store_with(&[[50, 50], [50, 51], [51, 50], [50, 50], [90, 10]]);
         let advisory = store.count_redundant(0.01);
         assert_eq!(store.total_entries(), 5, "advisory count must not mutate");
         assert_eq!(advisory, store.compact(0.01));

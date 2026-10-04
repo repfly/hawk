@@ -18,8 +18,9 @@ EXPORT ESTIMATE <var_a>, <var_b> AT <dim:val> AS JSON|CSV
    participate via their histogram bins — each bin label is a category.
 2. **Iterative proportional fitting (IPF).** Starting from a uniform table,
    rows and columns are alternately rescaled to the target marginals until
-   the table changes by less than an L1 tolerance (1e-10, capped at 1000
-   sweeps). With only two marginals as constraints the max-entropy solution
+   each fitted marginal matches its target within an L1 tolerance (1e-10,
+   capped at 1000 sweeps). A stationary table with incompatible structural
+   zeros is not convergence. With only two marginals as constraints the max-entropy solution
    is exactly the independence product `p_a ⊗ p_b`, so IPF converges in one
    sweep — the general loop exists so stored joints can join the constraint
    set later.
@@ -40,21 +41,22 @@ Derivation: the max-ent joint is the independence product, so its entropy is
 `H(A) + H(B)`. Any joint with these marginals has entropy between
 `max(H(A), H(B))` (one variable fully determined by the other) and
 `H(A) + H(B)` (independence). The gap between the max-ent entropy and the
-lowest achievable joint entropy is therefore
+lower bound on joint entropy is therefore
 
 ```
 H(A) + H(B) − max(H(A), H(B)) = min(H(A), H(B))
 ```
 
-— which is exactly the **maximum mutual information the marginals permit**:
-the bits about the dependency that the database does not know. Relatedly, the
+— a **conservative upper bound on unknown dependency information**. The
+lower entropy bound need not be achievable for the supplied marginals, so
+this is not necessarily the exact maximum feasible MI or the actual error. Relatedly, the
 MI of the estimate itself is 0 (independence), and the true MI is bounded by
 `0 ≤ MI ≤ min(H(A), H(B))` (a valid, if not always tight, upper bound).
 
 | Field | Meaning |
 |---|---|
 | Banner | `ESTIMATED — not observed` or `OBSERVED — stored joint`. |
-| `Missing Information` | Bits about the dependency the DB does not know; 0 when observed. |
+| `Missing Information` | Conservative bound on unknown dependency bits; 0 when observed. |
 | `MI` | MI of the reported table, with lower/upper bound columns `[0, min(H(A), H(B))]`. |
 | `Joint Entropy` | Entropy of the reported table; `H(A)+H(B)` for a pure estimate. |
 | Cells | `a × b` with probability and Fréchet `[lower, upper]`, ranked by probability. |
