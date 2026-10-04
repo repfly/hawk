@@ -277,7 +277,8 @@ mod tests {
 
         db.define_variable(categorical("wide", &["a", "b", "c", "d"]))
             .unwrap();
-        db.define_variable(categorical("narrow", &["x", "y"])).unwrap();
+        db.define_variable(categorical("narrow", &["x", "y"]))
+            .unwrap();
         db.define_variable(categorical("driven", &["up", "down"]))
             .unwrap();
         db.define_dimension(DimensionDefinition {
@@ -323,7 +324,11 @@ mod tests {
             .iter()
             .find(|s| s.query == "SHOW wide AT time:2025-02")
             .unwrap();
-        assert!((wide.expected_bits - 2.0).abs() < 0.1, "{}", wide.expected_bits);
+        assert!(
+            (wide.expected_bits - 2.0).abs() < 0.1,
+            "{}",
+            wide.expected_bits
+        );
         let narrow = suggestions
             .iter()
             .find(|s| s.query == "SHOW narrow AT time:2025-02")

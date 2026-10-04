@@ -56,7 +56,9 @@ pub fn execute_profile(db: &Database, cache: &QueryCache) -> Result<ProfileResul
 
     // Associations from stored joints, pooled over all slices.
     let names: Vec<String> = schema.variables.iter().map(|v| v.name.clone()).collect();
-    let matrix = mi_matrix(&names, |a, b| resolve_joint_counts(db, a, b, &HashMap::new()));
+    let matrix = mi_matrix(&names, |a, b| {
+        resolve_joint_counts(db, a, b, &HashMap::new())
+    });
     let top_associations: Vec<ProfileAssociation> = matrix
         .edges
         .iter()
@@ -73,8 +75,7 @@ pub fn execute_profile(db: &Database, cache: &QueryCache) -> Result<ProfileResul
     // dimension with at least 2 populated slices; otherwise None).
     let mut biggest_drift: Option<ProfileDrift> = None;
     for v in &schema.variables {
-        let Ok(track) =
-            execute_track(db, cache, &v.name, &HashMap::new(), None, None, None, None)
+        let Ok(track) = execute_track(db, cache, &v.name, &HashMap::new(), None, None, None, None)
         else {
             continue;
         };
@@ -171,10 +172,12 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
         let mut db = Database::create_with_options(root, false).expect("create db");
 
-        db.define_variable(categorical("color", &["red", "blue"])).unwrap();
+        db.define_variable(categorical("color", &["red", "blue"]))
+            .unwrap();
         db.define_variable(categorical("shape", &["round", "square"]))
             .unwrap();
-        db.define_variable(categorical("moving", &["up", "down"])).unwrap();
+        db.define_variable(categorical("moving", &["up", "down"]))
+            .unwrap();
         let dim = if time_dim { "time" } else { "region" };
         db.define_dimension(DimensionDefinition {
             name: dim.to_owned(),
@@ -219,7 +222,11 @@ mod tests {
         let profile = engine.profile(&db).unwrap();
 
         assert_eq!(profile.variables.len(), 3);
-        let color = profile.variables.iter().find(|v| v.name == "color").unwrap();
+        let color = profile
+            .variables
+            .iter()
+            .find(|v| v.name == "color")
+            .unwrap();
         assert_eq!(color.var_type, "categorical");
         assert!((color.entropy - 1.0).abs() < 1e-9);
         assert_eq!(color.sample_count, 40);
@@ -231,7 +238,10 @@ mod tests {
         // The stored joint carries 1 bit of MI; unstored pairs are unknown.
         assert_eq!(profile.top_associations.len(), 1);
         let assoc = &profile.top_associations[0];
-        assert_eq!((assoc.var_a.as_str(), assoc.var_b.as_str()), ("color", "shape"));
+        assert_eq!(
+            (assoc.var_a.as_str(), assoc.var_b.as_str()),
+            ("color", "shape")
+        );
         assert!((assoc.mi - 1.0).abs() < 1e-9);
         assert_eq!(
             profile.unknown_pairs,

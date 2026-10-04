@@ -307,15 +307,16 @@ fn structure_and_structural_diff() {
     let s = qe
         .structure(&db, "topic:russia-ukraine")
         .expect("structure");
-    assert_eq!(s.variables, vec!["leaning".to_owned(), "sentiment".to_owned()]);
+    assert_eq!(
+        s.variables,
+        vec!["leaning".to_owned(), "sentiment".to_owned()]
+    );
     assert_eq!(s.edges.len(), 1);
     assert_eq!(s.components, 1);
     assert!(!s.is_forest());
     assert!(s.unknown_pairs.is_empty());
     assert!(s.retained_information >= 0.0);
-    assert!(
-        (s.retained_information - s.edges.iter().map(|e| e.mi).sum::<f64>()).abs() < 1e-12
-    );
+    assert!((s.retained_information - s.edges.iter().map(|e| e.mi).sum::<f64>()).abs() < 1e-12);
 
     // Diff of a slice against itself: nothing rewired, delta zero.
     let self_diff = qe
@@ -361,12 +362,9 @@ fn structure_and_structural_diff() {
     .expect("sql compare variable");
     assert!(out.to_string().contains("JSD"));
 
-    let exported = hawk_engine::sql::query(
-        &db,
-        &qe,
-        "EXPORT STRUCTURE AT topic:russia-ukraine AS JSON",
-    )
-    .expect("export structure");
+    let exported =
+        hawk_engine::sql::query(&db, &qe, "EXPORT STRUCTURE AT topic:russia-ukraine AS JSON")
+            .expect("export structure");
     assert!(exported.rows[0][0].starts_with('['));
 
     let exported = hawk_engine::sql::query(
@@ -382,8 +380,8 @@ fn structure_and_structural_diff() {
 fn ingest_surprisal_hook() {
     let root = temp_db("surprisal-hook");
     let mut db = create_test_db(&root);
-    let fixture =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/community_notes_small.csv");
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/community_notes_small.csv");
 
     let mut mapping = IngestMapping::default();
     mapping
