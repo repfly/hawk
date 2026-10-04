@@ -1330,7 +1330,9 @@ fn exec_export_distribution(
 /// on-disk cost (bincode serialize-and-measure), information retained in
 /// bits, and a recommendation. Mutates nothing.
 fn exec_audit_storage(db: &Database) -> Result<QueryResult> {
-    use crate::math::{category_fold_candidates, choose_bin_count, score_histogram_bins, score_joint};
+    use crate::math::{
+        category_fold_candidates, choose_bin_count, score_histogram_bins, score_joint,
+    };
     use crate::storage::DEFAULT_SNAPSHOT_EPSILON_BITS;
 
     let mut rows = Vec::new();
@@ -1520,7 +1522,8 @@ fn format_bytes(bytes: u64) -> String {
 /// SUGGEST — ranked next queries by expected information gain. The DSL path
 /// carries no session history; the MCP `suggest` tool adds ledger dedup.
 fn exec_suggest(db: &Database, engine: &QueryEngine, limit: usize) -> Result<QueryResult> {
-    let suggestions = engine.suggest(db, &crate::query::suggest::SuggestContext::default(), limit)?;
+    let suggestions =
+        engine.suggest(db, &crate::query::suggest::SuggestContext::default(), limit)?;
 
     let mut rows: Vec<Vec<String>> = suggestions
         .iter()

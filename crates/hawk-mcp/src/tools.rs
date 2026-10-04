@@ -174,14 +174,12 @@ impl HawkMcp {
                 .map(|s| {
                     // What the suggested query would charge under the ledger's
                     // model — distinct from its expected information gain.
-                    let cost_bits = hawk_engine::sql::parser::parse(&s.query)
-                        .ok()
-                        .map(|stmt| {
-                            charges_for_statement(db, engine, &stmt)
-                                .iter()
-                                .map(|(_, bits)| bits)
-                                .sum::<f64>()
-                        });
+                    let cost_bits = hawk_engine::sql::parser::parse(&s.query).ok().map(|stmt| {
+                        charges_for_statement(db, engine, &stmt)
+                            .iter()
+                            .map(|(_, bits)| bits)
+                            .sum::<f64>()
+                    });
                     serde_json::json!({
                         "query": s.query,
                         "rationale": s.rationale,
@@ -649,7 +647,11 @@ mod tests {
         let ledger = ledger_json(&server);
         assert!((ledger["total_spent_bits"].as_f64().unwrap() - expected).abs() < 1e-9);
         assert!(
-            (ledger["spent_bits_per_variable"]["category"].as_f64().unwrap() - expected).abs()
+            (ledger["spent_bits_per_variable"]["category"]
+                .as_f64()
+                .unwrap()
+                - expected)
+                .abs()
                 < 1e-9
         );
         let _ = server.profile().expect("profile tool again");

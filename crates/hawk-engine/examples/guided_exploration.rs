@@ -62,7 +62,10 @@ fn main() -> anyhow::Result<()> {
     let _ = std::fs::remove_dir_all(&root);
     let mut db = Database::create_with_options(&root, false)?;
 
-    db.define_variable(categorical("channel", &["mobile", "desktop", "tablet", "tv"]))?;
+    db.define_variable(categorical(
+        "channel",
+        &["mobile", "desktop", "tablet", "tv"],
+    ))?;
     db.define_variable(categorical("plan", &["free", "paid"]))?;
     db.define_variable(categorical("churned", &["yes", "no"]))?;
     db.define_dimension(DimensionDefinition {
@@ -97,7 +100,10 @@ fn main() -> anyhow::Result<()> {
     for round in 1..=5 {
         let suggestions = engine.suggest(&db, &ctx, 5)?;
         let Some(top) = suggestions.first() else {
-            println!("Round {}: nothing left to suggest — exploration complete.", round);
+            println!(
+                "Round {}: nothing left to suggest — exploration complete.",
+                round
+            );
             break;
         };
 

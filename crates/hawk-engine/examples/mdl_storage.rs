@@ -26,7 +26,10 @@ fn metrics(db: &Database) -> anyhow::Result<Vec<String>> {
         "EXPORT STRUCTURE AT time:2024-01 AS JSON",
     ]
     .iter()
-    .map(|sql| Ok(executor::execute(db, &engine, &parser::parse(sql)?)?.to_string()))
+    .map(|sql| {
+        let statement = parser::parse(sql).map_err(anyhow::Error::msg)?;
+        Ok(executor::execute(db, &engine, &statement)?.to_string())
+    })
     .collect()
 }
 
@@ -80,7 +83,7 @@ fn main() -> anyhow::Result<()> {
     let audit = executor::execute(
         &db,
         &QueryEngine::default(),
-        &parser::parse("EXPORT AUDIT STORAGE AS JSON")?,
+        &parser::parse("EXPORT AUDIT STORAGE AS JSON").map_err(anyhow::Error::msg)?,
     )?;
     // Persist report outside the measured DB directory.
     let audit_path = root.with_extension("audit.json");
