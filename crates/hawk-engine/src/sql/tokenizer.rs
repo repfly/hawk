@@ -37,6 +37,13 @@ pub enum Token {
     Json,
     Alert,
     When,
+    Surprise,
+    Under,
+    Structure,
+    Estimate,
+    Audit,
+    Storage,
+    Suggest,
 
     // Operators
     Gt,
@@ -112,6 +119,13 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, String> {
             "JSON" => Token::Json,
             "ALERT" => Token::Alert,
             "WHEN" => Token::When,
+            "SURPRISE" => Token::Surprise,
+            "UNDER" => Token::Under,
+            "STRUCTURE" => Token::Structure,
+            "ESTIMATE" => Token::Estimate,
+            "AUDIT" => Token::Audit,
+            "STORAGE" => Token::Storage,
+            "SUGGEST" => Token::Suggest,
             ">=" => Token::Gte,
             "<=" => Token::Lte,
             ">" => Token::Gt,
@@ -201,6 +215,59 @@ mod tests {
         let tokens = tokenize("COMPARE category ACROSS time").unwrap();
         assert_eq!(tokens[0], Token::Compare);
         assert_eq!(tokens[2], Token::Across);
+    }
+
+    #[test]
+    fn tokenize_surprise() {
+        let tokens = tokenize("SURPRISE time:2024 UNDER time:2023 ON category").unwrap();
+        assert_eq!(tokens[0], Token::Surprise);
+        assert_eq!(tokens[1], Token::DimRef("time".into(), "2024".into()));
+        assert_eq!(tokens[2], Token::Under);
+        assert_eq!(tokens[3], Token::DimRef("time".into(), "2023".into()));
+        assert_eq!(tokens[4], Token::On);
+        assert_eq!(tokens[5], Token::Ident("category".into()));
+    }
+
+    #[test]
+    fn tokenize_structure() {
+        let tokens = tokenize("STRUCTURE AT time:2024").unwrap();
+        assert_eq!(tokens[0], Token::Structure);
+        assert_eq!(tokens[1], Token::At);
+        assert_eq!(tokens[2], Token::DimRef("time".into(), "2024".into()));
+
+        let tokens = tokenize("COMPARE STRUCTURE BETWEEN time:2023 AND time:2024").unwrap();
+        assert_eq!(tokens[0], Token::Compare);
+        assert_eq!(tokens[1], Token::Structure);
+        assert_eq!(tokens[2], Token::Between);
+    }
+
+    #[test]
+    fn tokenize_estimate() {
+        let tokens = tokenize("ESTIMATE plan, churned AT time:2025-Q1").unwrap();
+        assert_eq!(tokens[0], Token::Estimate);
+        assert_eq!(tokens[1], Token::Ident("plan".into()));
+        assert_eq!(tokens[2], Token::Comma);
+        assert_eq!(tokens[3], Token::Ident("churned".into()));
+        assert_eq!(tokens[4], Token::At);
+        assert_eq!(tokens[5], Token::DimRef("time".into(), "2025-Q1".into()));
+    }
+
+    #[test]
+    fn tokenize_audit_storage() {
+        let tokens = tokenize("AUDIT STORAGE").unwrap();
+        assert_eq!(tokens[0], Token::Audit);
+        assert_eq!(tokens[1], Token::Storage);
+    }
+
+    #[test]
+    fn tokenize_suggest() {
+        let tokens = tokenize("SUGGEST LIMIT 5").unwrap();
+        assert_eq!(tokens[0], Token::Suggest);
+        assert_eq!(tokens[1], Token::Limit);
+        assert_eq!(tokens[2], Token::Number(5));
+
+        let tokens = tokenize("suggest").unwrap();
+        assert_eq!(tokens[0], Token::Suggest);
     }
 
     #[test]

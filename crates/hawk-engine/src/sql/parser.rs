@@ -17,6 +17,22 @@ pub enum Statement {
     },
     /// EXPLAIN <dim_ref> VS <dim_ref>
     Explain { ref_a: DimRef, ref_b: DimRef },
+    /// SURPRISE <dim_ref> UNDER <dim_ref> [ON <variable>]
+    Surprise {
+        ref_a: DimRef,
+        ref_b: DimRef,
+        variable: Option<String>,
+    },
+    /// STRUCTURE AT <dim_ref>
+    Structure { reference: DimRef },
+    /// COMPARE STRUCTURE BETWEEN <dim_ref> AND <dim_ref>
+    CompareStructure { ref_a: DimRef, ref_b: DimRef },
+    /// ESTIMATE <var_a>, <var_b> AT <dim_ref>
+    Estimate {
+        var_a: String,
+        var_b: String,
+        reference: DimRef,
+    },
     /// TRACK <variable> FROM <dim_ref> [GRANULARITY <ident>]
     Track {
         variable: String,
@@ -82,6 +98,13 @@ pub enum Statement {
         variable: String,
         reference: Option<DimRef>,
     },
+    /// AUDIT STORAGE — advisory MDL report: per-object storage cost vs.
+    /// information retained. Read-only, mutates nothing.
+    AuditStorage,
+    /// SUGGEST [LIMIT <n>] — rank candidate next queries by expected
+    /// information gain (default limit 10). The DSL path has no session
+    /// history; the MCP `suggest` tool adds ledger-based dedup.
+    Suggest { limit: usize },
     /// STATS
     Stats,
     /// SCHEMA
@@ -190,6 +213,9 @@ impl Parser {
         match self.advance().clone() {
             Token::Compare => self.parse_compare(),
             Token::Explain => self.parse_explain(),
+            Token::Surprise => self.parse_surprise(),
+            Token::Structure => self.parse_structure(),
+            Token::Estimate => self.parse_estimate(),
             Token::Track => self.parse_track(),
             Token::Show => self.parse_show(),
             Token::Rank => self.parse_rank(),
@@ -200,13 +226,16 @@ impl Parser {
             Token::Nearest => self.parse_nearest(),
             Token::Export => self.parse_export(),
             Token::Alert => self.parse_alert(),
+            Token::Audit => self.parse_audit(),
+            Token::Suggest => self.parse_suggest(),
             Token::Stats => Ok(Statement::Stats),
             Token::Schema => Ok(Statement::Schema),
             Token::Dimensions => self.parse_dimensions(),
             Token::Eof => Err("empty query".into()),
             other => Err(format!(
-                "unexpected token {:?}; expected COMPARE, EXPLAIN, TRACK, SHOW, RANK, MI, CMI, \
-                 CORRELATIONS, PAIRWISE, NEAREST, EXPORT, ALERT, STATS, SCHEMA, or DIMENSIONS",
+                "unexpected token {:?}; expected COMPARE, EXPLAIN, SURPRISE, STRUCTURE, ESTIMATE, \
+                 TRACK, SHOW, RANK, MI, CMI, CORRELATIONS, PAIRWISE, NEAREST, EXPORT, ALERT, \
+                 AUDIT, SUGGEST, STATS, SCHEMA, or DIMENSIONS",
                 other
             )),
         }
@@ -214,7 +243,17 @@ impl Parser {
 
     // COMPARE <variable> BETWEEN <dim_ref> AND <dim_ref> [WHERE ...]
     // COMPARE <variable> ACROSS <dimension> [WHERE ...]
+    // COMPARE STRUCTURE BETWEEN <dim_ref> AND <dim_ref>
     fn parse_compare(&mut self) -> Result<Statement, String> {
+        if self.peek() == &Token::Structure {
+            self.advance();
+            self.expect_token(&Token::Between)?;
+            let ref_a = self.expect_dim_ref()?;
+            self.expect_token(&Token::And)?;
+            let ref_b = self.expect_dim_ref()?;
+            return Ok(Statement::CompareStructure { ref_a, ref_b });
+        }
+
         let variable = self.expect_ident()?;
 
         match self.peek().clone() {
@@ -254,6 +293,47 @@ impl Parser {
         self.expect_token(&Token::Vs)?;
         let ref_b = self.expect_dim_ref()?;
         Ok(Statement::Explain { ref_a, ref_b })
+    }
+
+    // SURPRISE <dim_ref> UNDER <dim_ref> [ON <variable>]
+    fn parse_surprise(&mut self) -> Result<Statement, String> {
+        let ref_a = self.expect_dim_ref()?;
+        self.expect_token(&Token::Under)?;
+        let ref_b = self.expect_dim_ref()?;
+        let variable = if self.peek() == &Token::On {
+            self.advance();
+            Some(self.expect_ident()?)
+        } else {
+            None
+        };
+        Ok(Statement::Surprise {
+            ref_a,
+            ref_b,
+            variable,
+        })
+    }
+
+    // STRUCTURE AT <dim_ref>
+    fn parse_structure(&mut self) -> Result<Statement, String> {
+        self.expect_token(&Token::At)?;
+        let reference = self.expect_dim_ref()?;
+        Ok(Statement::Structure { reference })
+    }
+
+    // ESTIMATE <var_a>, <var_b> AT <dim_ref>
+    fn parse_estimate(&mut self) -> Result<Statement, String> {
+        let var_a = self.expect_ident()?;
+        if self.peek() == &Token::Comma {
+            self.advance();
+        }
+        let var_b = self.expect_ident()?;
+        self.expect_token(&Token::At)?;
+        let reference = self.expect_dim_ref()?;
+        Ok(Statement::Estimate {
+            var_a,
+            var_b,
+            reference,
+        })
     }
 
     // TRACK <variable> FROM <dim_ref> [GRANULARITY <ident>]
@@ -459,6 +539,22 @@ impl Parser {
         })
     }
 
+    // AUDIT STORAGE
+    fn parse_audit(&mut self) -> Result<Statement, String> {
+        self.expect_token(&Token::Storage)?;
+        Ok(Statement::AuditStorage)
+    }
+
+    // SUGGEST [LIMIT <n>]
+    fn parse_suggest(&mut self) -> Result<Statement, String> {
+        let mut limit = crate::query::suggest::DEFAULT_SUGGEST_LIMIT;
+        if self.peek() == &Token::Limit {
+            self.advance();
+            limit = self.try_number().ok_or("expected number after LIMIT")?;
+        }
+        Ok(Statement::Suggest { limit })
+    }
+
     // EXPORT DISTRIBUTION <variable> AT <dim_ref> AS JSON
     fn parse_export_distribution(&mut self) -> Result<Statement, String> {
         let variable = self.expect_ident()?;
@@ -601,6 +697,149 @@ mod tests {
     fn parse_explain() {
         let stmt = parse("explain time:2013 vs time:2022").unwrap();
         assert!(matches!(stmt, Statement::Explain { .. }));
+    }
+
+    #[test]
+    fn parse_surprise() {
+        let stmt = parse("SURPRISE time:2024 UNDER time:2023").unwrap();
+        assert_eq!(
+            stmt,
+            Statement::Surprise {
+                ref_a: DimRef {
+                    dimension: "time".into(),
+                    value: "2024".into()
+                },
+                ref_b: DimRef {
+                    dimension: "time".into(),
+                    value: "2023".into()
+                },
+                variable: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_surprise_with_variable() {
+        let stmt = parse("surprise time:2024 under time:2023 on category").unwrap();
+        match stmt {
+            Statement::Surprise { variable, .. } => {
+                assert_eq!(variable, Some("category".into()));
+            }
+            _ => panic!("expected Surprise"),
+        }
+    }
+
+    #[test]
+    fn parse_export_surprise_as_json() {
+        let stmt = parse("EXPORT SURPRISE time:2024 UNDER time:2023 ON category AS JSON").unwrap();
+        match stmt {
+            Statement::Export { inner, format } => {
+                assert!(matches!(*inner, Statement::Surprise { .. }));
+                assert_eq!(format, ExportFormat::Json);
+            }
+            _ => panic!("expected Export"),
+        }
+    }
+
+    #[test]
+    fn parse_structure() {
+        let stmt = parse("STRUCTURE AT time:2024").unwrap();
+        assert_eq!(
+            stmt,
+            Statement::Structure {
+                reference: DimRef {
+                    dimension: "time".into(),
+                    value: "2024".into()
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn parse_compare_structure() {
+        let stmt = parse("COMPARE STRUCTURE BETWEEN time:2023 AND time:2024").unwrap();
+        assert_eq!(
+            stmt,
+            Statement::CompareStructure {
+                ref_a: DimRef {
+                    dimension: "time".into(),
+                    value: "2023".into()
+                },
+                ref_b: DimRef {
+                    dimension: "time".into(),
+                    value: "2024".into()
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn parse_compare_variable_still_works_alongside_compare_structure() {
+        // COMPARE <var> BETWEEN ... must not be broken by COMPARE STRUCTURE.
+        let stmt = parse("COMPARE category BETWEEN time:2023 AND time:2024").unwrap();
+        assert!(matches!(stmt, Statement::Compare { ref variable, .. } if variable == "category"));
+
+        let stmt = parse("COMPARE category ACROSS time").unwrap();
+        assert!(matches!(stmt, Statement::CompareAll { .. }));
+
+        let stmt = parse("compare structure between time:2023 and time:2024").unwrap();
+        assert!(matches!(stmt, Statement::CompareStructure { .. }));
+    }
+
+    #[test]
+    fn parse_export_structure_as_json() {
+        let stmt = parse("EXPORT STRUCTURE AT time:2024 AS JSON").unwrap();
+        match stmt {
+            Statement::Export { inner, format } => {
+                assert!(matches!(*inner, Statement::Structure { .. }));
+                assert_eq!(format, ExportFormat::Json);
+            }
+            _ => panic!("expected Export"),
+        }
+    }
+
+    #[test]
+    fn parse_export_compare_structure_as_csv() {
+        let stmt =
+            parse("EXPORT COMPARE STRUCTURE BETWEEN time:2023 AND time:2024 AS CSV").unwrap();
+        match stmt {
+            Statement::Export { inner, format } => {
+                assert!(matches!(*inner, Statement::CompareStructure { .. }));
+                assert_eq!(format, ExportFormat::Csv);
+            }
+            _ => panic!("expected Export"),
+        }
+    }
+
+    #[test]
+    fn parse_estimate() {
+        let stmt = parse("ESTIMATE plan, churned AT time:2025-Q1").unwrap();
+        assert_eq!(
+            stmt,
+            Statement::Estimate {
+                var_a: "plan".into(),
+                var_b: "churned".into(),
+                reference: DimRef {
+                    dimension: "time".into(),
+                    value: "2025-Q1".into()
+                },
+            }
+        );
+        // Comma is optional, matching MI.
+        let stmt = parse("estimate plan churned at time:2025-Q1").unwrap();
+        assert!(matches!(stmt, Statement::Estimate { .. }));
+    }
+
+    #[test]
+    fn parse_export_estimate_as_json() {
+        let stmt = parse("EXPORT ESTIMATE plan, churned AT time:2025-Q1 AS JSON").unwrap();
+        match stmt {
+            Statement::Export { inner, format } => {
+                assert!(matches!(*inner, Statement::Estimate { .. }));
+                assert_eq!(format, ExportFormat::Json);
+            }
+            _ => panic!("expected Export"),
+        }
     }
 
     #[test]
@@ -755,6 +994,47 @@ mod tests {
         match stmt {
             Statement::Export { inner, format } => {
                 assert_eq!(*inner, Statement::Schema);
+                assert_eq!(format, ExportFormat::Json);
+            }
+            _ => panic!("expected Export"),
+        }
+    }
+
+    #[test]
+    fn parse_audit_storage() {
+        assert_eq!(parse("AUDIT STORAGE").unwrap(), Statement::AuditStorage);
+        assert_eq!(parse("audit storage").unwrap(), Statement::AuditStorage);
+        assert!(parse("AUDIT").is_err());
+    }
+
+    #[test]
+    fn parse_export_audit_storage_as_json() {
+        let stmt = parse("EXPORT AUDIT STORAGE AS JSON").unwrap();
+        match stmt {
+            Statement::Export { inner, format } => {
+                assert_eq!(*inner, Statement::AuditStorage);
+                assert_eq!(format, ExportFormat::Json);
+            }
+            _ => panic!("expected Export"),
+        }
+    }
+
+    #[test]
+    fn parse_suggest() {
+        assert_eq!(parse("SUGGEST").unwrap(), Statement::Suggest { limit: 10 });
+        assert_eq!(
+            parse("suggest limit 5").unwrap(),
+            Statement::Suggest { limit: 5 }
+        );
+        assert!(parse("SUGGEST LIMIT").is_err());
+    }
+
+    #[test]
+    fn parse_export_suggest_as_json() {
+        let stmt = parse("EXPORT SUGGEST LIMIT 3 AS JSON").unwrap();
+        match stmt {
+            Statement::Export { inner, format } => {
+                assert_eq!(*inner, Statement::Suggest { limit: 3 });
                 assert_eq!(format, ExportFormat::Json);
             }
             _ => panic!("expected Export"),

@@ -96,6 +96,34 @@ Report:
 | Ingest duration | Wall-clock command duration or benchmark result |
 | Query latency | Criterion estimates from `bench_end_to_end` |
 
+## MDL Audit
+
+Use this procedure to measure how much storage the MDL machinery
+([mdl-storage.md](mdl-storage.md)) can reclaim on a real dataset with no
+measurable metric change. Report the method's inputs alongside any published
+numbers; do not publish sizes without the environment template above.
+
+1. Build a database from the dataset (the snapshot procedure above works),
+   using an ingest path that produces multiple updates per distribution so
+   the snapshot store is populated (e.g. batch-by-batch or delta ingestion).
+2. Record the baseline: `du -sk <db_dir>` and, from inside the engine or via
+   MCP, run `AUDIT STORAGE` (or `EXPORT AUDIT STORAGE AS JSON`) and keep the
+   report — total size, candidate savings, snapshots redundant at epsilon.
+3. Record reference metrics you require to be unchanged, e.g. `EXPORT
+   COMPARE ... AS JSON` for a representative slice pair and `EXPORT
+   STRUCTURE AT ... AS JSON`.
+4. Compact: call `Database::compact_snapshots(epsilon_bits)` (start with the
+   audit's default epsilon, 0.01 bits) followed by `flush()`.
+5. Re-measure `du -sk <db_dir>`, re-run `AUDIT STORAGE`, and re-run the
+   reference queries from step 3.
+6. Report: size before/after, snapshots removed, the epsilon used, and a
+   diff of the reference query outputs (expected: byte-identical, since
+   compaction touches only historical snapshots, never live
+   distributions).
+
+Compaction is explicit and opt-in; nothing in the ingest or query path runs
+it automatically.
+
 ## Large Dataset Reproduction
 
 Do not commit large datasets to the repository. For large-claim reproduction, publish:

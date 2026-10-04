@@ -7,3 +7,4 @@ pub mod raw_log;
 pub mod snapshot_store;
 
 pub use dist_store::{Database, DatabaseStats, OpenMode};
+pub use snapshot_store::{SnapshotAudit, DEFAULT_SNAPSHOT_EPSILON_BITS};

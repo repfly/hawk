@@ -89,7 +89,10 @@ impl fmt::Display for QueryResult {
 
         let ncols = self.header.len();
 
-        // Compute column widths
+        // Compute column widths. Padding is capped: huge cells (e.g. EXPORT
+        // payloads) print in full but never widen the column — fmt's runtime
+        // width argument is u16-limited and would panic.
+        const MAX_COLUMN_WIDTH: usize = 512;
         let mut widths = vec![0usize; ncols];
         for (i, h) in self.header.iter().enumerate() {
             widths[i] = widths[i].max(h.len());
@@ -97,7 +100,7 @@ impl fmt::Display for QueryResult {
         for row in &self.rows {
             for (i, cell) in row.iter().enumerate() {
                 if i < ncols {
-                    widths[i] = widths[i].max(cell.len());
+                    widths[i] = widths[i].max(cell.len().min(MAX_COLUMN_WIDTH));
                 }
             }
         }
@@ -155,6 +158,19 @@ mod tests {
         assert!(output.contains("JSD"));
         assert!(output.contains("0.1234"));
         assert!(output.contains("─"));
+    }
+
+    #[test]
+    fn formats_oversized_cells_without_panicking() {
+        // fmt's runtime width argument is u16-limited; a 64 KiB+ cell (e.g.
+        // an EXPORT payload) must render in full without widening the column.
+        let big = "x".repeat(70_000);
+        let result = QueryResult {
+            header: vec!["Output".into()],
+            rows: vec![vec![big.clone()]],
+        };
+        let output = result.to_string();
+        assert!(output.contains(&big));
     }
 
     #[test]

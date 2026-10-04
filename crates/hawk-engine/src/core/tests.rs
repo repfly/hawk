@@ -250,6 +250,113 @@ fn categorical_entropy_accounts_for_unknown_bucket() {
     assert!(unknown_entropy > known_entropy);
 }
 
+#[test]
+fn fold_small_categories_moves_rare_mass_to_unknown() {
+    let mut repr = DistributionRepr::Categorical {
+        categories: vec!["common".to_owned(), "rare".to_owned(), "tiny".to_owned()],
+        counts: vec![100, 4, 1],
+        unknown_count: 3,
+        total_count: 108,
+    };
+
+    assert!(repr.fold_small_categories(5));
+
+    let DistributionRepr::Categorical {
+        categories,
+        counts,
+        unknown_count,
+        total_count,
+    } = &repr
+    else {
+        panic!("categorical expected");
+    };
+    assert_eq!(categories, &vec!["common".to_owned()]);
+    assert_eq!(counts, &vec![100]);
+    assert_eq!(*unknown_count, 8);
+    assert_eq!(*total_count, 108);
+}
+
+#[test]
+fn fold_small_categories_is_a_noop_when_all_cells_are_large_enough() {
+    let mut repr = DistributionRepr::Categorical {
+        categories: vec!["a".to_owned(), "b".to_owned()],
+        counts: vec![5, 7],
+        unknown_count: 1,
+        total_count: 13,
+    };
+    let before = repr.clone();
+
+    // Exactly-k cells are kept; the unknown bucket itself is never a cell.
+    assert!(!repr.fold_small_categories(5));
+    assert_eq!(repr, before);
+}
+
+#[test]
+fn fold_small_categories_can_fold_everything_and_ignores_histograms() {
+    let mut repr = DistributionRepr::Categorical {
+        categories: vec!["a".to_owned(), "b".to_owned()],
+        counts: vec![1, 2],
+        unknown_count: 0,
+        total_count: 3,
+    };
+    assert!(repr.fold_small_categories(10));
+    let DistributionRepr::Categorical {
+        categories,
+        counts,
+        unknown_count,
+        total_count,
+    } = &repr
+    else {
+        panic!("categorical expected");
+    };
+    assert!(categories.is_empty());
+    assert!(counts.is_empty());
+    assert_eq!(*unknown_count, 3);
+    assert_eq!(*total_count, 3);
+
+    let mut hist = DistributionRepr::Histogram {
+        min: 0.0,
+        max: 1.0,
+        bin_counts: vec![1, 2],
+        total_count: 3,
+    };
+    let before = hist.clone();
+    assert!(!hist.fold_small_categories(10));
+    assert_eq!(hist, before);
+}
+
+#[test]
+fn suppress_small_cells_recomputes_entropy_after_folding() {
+    // Existing unknown mass, so folding merges cells rather than relabelling.
+    let repr = DistributionRepr::Categorical {
+        categories: vec!["a".to_owned(), "b".to_owned(), "rare".to_owned()],
+        counts: vec![50, 50, 2],
+        unknown_count: 3,
+        total_count: 105,
+    };
+    let mut dist = crate::core::DistributionObject::new(
+        1,
+        "var",
+        dimension_key_from_pairs([("time", "2024")]),
+        repr,
+    );
+    dist.entropy = entropy(&dist.repr.value_count_vector(), dist.sample_count);
+    let unfolded_entropy = dist.entropy;
+
+    dist.suppress_small_cells(5);
+
+    let expected = entropy(&dist.repr.value_count_vector(), dist.sample_count);
+    assert_eq!(dist.entropy, expected);
+    assert_ne!(dist.entropy, unfolded_entropy);
+    assert!(dist
+        .repr
+        .categorical_labels_with_unknown()
+        .expect("categorical")
+        .iter()
+        .all(|l| l != "rare"));
+    assert_eq!(dist.sample_count, 105);
+}
+
 fn categorical_repr() -> DistributionRepr {
     DistributionRepr::Categorical {
         categories: vec!["red".to_owned(), "blue".to_owned()],

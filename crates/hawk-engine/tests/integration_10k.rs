@@ -77,7 +77,7 @@ fn ingest(db: &mut Database) {
         &mapping,
         IngestOptions {
             batch_size: 1_000,
-            show_progress: false,
+            ..IngestOptions::default()
         },
     )
     .expect("ingest");
@@ -210,6 +210,238 @@ fn track_over_time() {
 
     assert!(track.time_points.len() > 5);
     assert_eq!(track.time_points.len(), track.entropy_series.len());
+}
+
+#[test]
+fn surprise_between_topics() {
+    let root = temp_db("surprise");
+    let mut db = create_test_db(&root);
+    ingest(&mut db);
+
+    let qe = QueryEngine::default();
+
+    let results = qe
+        .surprise(
+            &db,
+            "topic:russia-ukraine",
+            "topic:climate-change",
+            Some("sentiment"),
+        )
+        .expect("surprise");
+    assert_eq!(results.len(), 1);
+    let r = &results[0];
+    println!(
+        "Surprise russia-ukraine under climate-change (sentiment): H(A,B)={:.4}, excess={:.4}",
+        r.bits_per_sample, r.excess_bits
+    );
+    assert!(r.bits_per_sample >= r.entropy_a - 1e-9);
+    assert!(r.excess_bits >= -1e-9);
+    assert!((r.excess_bits - (r.bits_per_sample - r.entropy_a)).abs() < 1e-9);
+
+    // No variable: all variables scored, ranked by excess bits.
+    let all = qe
+        .surprise(&db, "topic:russia-ukraine", "topic:climate-change", None)
+        .expect("surprise all");
+    assert_eq!(all.len(), 2);
+    assert!(all[0].excess_bits >= all[1].excess_bits);
+
+    // Self-surprise is just the entropy: zero excess.
+    let self_r = &qe
+        .surprise(
+            &db,
+            "topic:russia-ukraine",
+            "topic:russia-ukraine",
+            Some("leaning"),
+        )
+        .expect("self surprise")[0];
+    assert!(self_r.excess_bits.abs() < 1e-6);
+
+    // SQL wiring, EXPORT wrapper, and ALERT metric.
+    let out = hawk_engine::sql::query(
+        &db,
+        &qe,
+        "SURPRISE topic:russia-ukraine UNDER topic:climate-change ON leaning",
+    )
+    .expect("sql surprise");
+    assert!(out.to_string().contains("Excess Bits"));
+
+    let ranked = hawk_engine::sql::query(
+        &db,
+        &qe,
+        "SURPRISE topic:russia-ukraine UNDER topic:climate-change",
+    )
+    .expect("sql surprise ranked");
+    assert_eq!(ranked.rows.len(), 2);
+
+    let exported = hawk_engine::sql::query(
+        &db,
+        &qe,
+        "EXPORT SURPRISE topic:russia-ukraine UNDER topic:climate-change ON leaning AS JSON",
+    )
+    .expect("export surprise");
+    assert!(exported.rows[0][0].starts_with('['));
+
+    let alert = hawk_engine::sql::query(
+        &db,
+        &qe,
+        "ALERT WHEN surprisal > 0.0001 ON sentiment FROM time:2023-01",
+    )
+    .expect("alert surprisal");
+    assert!(
+        alert.rows.iter().all(|r| r[0] != "No alerts triggered"),
+        "expected surprisal alert hits: {:?}",
+        alert.rows
+    );
+}
+
+#[test]
+fn structure_and_structural_diff() {
+    let root = temp_db("structure");
+    let mut db = create_test_db(&root);
+    ingest(&mut db);
+
+    let qe = QueryEngine::default();
+
+    // Only sentiment×leaning has a stored joint; both variables exist, so the
+    // tree is a single edge with no unknown pairs.
+    let s = qe
+        .structure(&db, "topic:russia-ukraine")
+        .expect("structure");
+    assert_eq!(s.variables, vec!["leaning".to_owned(), "sentiment".to_owned()]);
+    assert_eq!(s.edges.len(), 1);
+    assert_eq!(s.components, 1);
+    assert!(!s.is_forest());
+    assert!(s.unknown_pairs.is_empty());
+    assert!(s.retained_information >= 0.0);
+    assert!(
+        (s.retained_information - s.edges.iter().map(|e| e.mi).sum::<f64>()).abs() < 1e-12
+    );
+
+    // Diff of a slice against itself: nothing rewired, delta zero.
+    let self_diff = qe
+        .compare_structure(&db, "topic:russia-ukraine", "topic:russia-ukraine")
+        .expect("self diff");
+    assert!(self_diff.added_edges.is_empty());
+    assert!(self_diff.dropped_edges.is_empty());
+    assert_eq!(self_diff.rewiring_score, 0.0);
+    assert!(self_diff.retained_information_delta.abs() < 1e-12);
+
+    // Diff between two topics: same single edge, possibly re-weighted.
+    let diff = qe
+        .compare_structure(&db, "topic:russia-ukraine", "topic:climate-change")
+        .expect("diff");
+    assert_eq!(diff.reweighted_edges.len(), 1);
+    assert!(
+        (diff.retained_information_delta
+            - (diff.structure_b.retained_information - diff.structure_a.retained_information))
+            .abs()
+            < 1e-12
+    );
+
+    // SQL wiring for both statements plus the EXPORT wrapper.
+    let out = hawk_engine::sql::query(&db, &qe, "STRUCTURE AT topic:russia-ukraine")
+        .expect("sql structure");
+    assert!(out.to_string().contains("Retained Information"));
+    assert!(out.to_string().contains("leaning — sentiment"));
+
+    let out = hawk_engine::sql::query(
+        &db,
+        &qe,
+        "COMPARE STRUCTURE BETWEEN topic:russia-ukraine AND topic:climate-change",
+    )
+    .expect("sql compare structure");
+    assert!(out.to_string().contains("retained information changed by"));
+
+    // COMPARE <var> BETWEEN must keep working end-to-end.
+    let out = hawk_engine::sql::query(
+        &db,
+        &qe,
+        "COMPARE leaning BETWEEN topic:russia-ukraine AND topic:climate-change",
+    )
+    .expect("sql compare variable");
+    assert!(out.to_string().contains("JSD"));
+
+    let exported = hawk_engine::sql::query(
+        &db,
+        &qe,
+        "EXPORT STRUCTURE AT topic:russia-ukraine AS JSON",
+    )
+    .expect("export structure");
+    assert!(exported.rows[0][0].starts_with('['));
+
+    let exported = hawk_engine::sql::query(
+        &db,
+        &qe,
+        "EXPORT COMPARE STRUCTURE BETWEEN topic:russia-ukraine AND topic:climate-change AS CSV",
+    )
+    .expect("export compare structure");
+    assert!(exported.rows[0][0].starts_with("Metric,Value"));
+}
+
+#[test]
+fn ingest_surprisal_hook() {
+    let root = temp_db("surprisal-hook");
+    let mut db = create_test_db(&root);
+    let fixture =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/community_notes_small.csv");
+
+    let mut mapping = IngestMapping::default();
+    mapping
+        .variables
+        .insert("sentiment_score".into(), "sentiment".into());
+    mapping
+        .variables
+        .insert("political_leaning".into(), "leaning".into());
+    mapping
+        .dimensions
+        .insert("topic_label".into(), "topic".into());
+    mapping
+        .dimensions
+        .insert("created_at".into(), "time".into());
+
+    // First ingest builds the model; no pre-batch model exists, so even with
+    // the flag on there is nothing to score.
+    let first = IngestionPipeline::ingest_file(
+        &mut db,
+        fixture.clone(),
+        &mapping,
+        IngestOptions {
+            surprisal_report: true,
+            ..IngestOptions::default()
+        },
+    )
+    .expect("first ingest");
+    assert!(first.surprisal.is_empty());
+
+    // Second ingest of the same data: batch matches the model, low excess bits.
+    let second = IngestionPipeline::ingest_file(
+        &mut db,
+        fixture.clone(),
+        &mapping,
+        IngestOptions {
+            surprisal_report: true,
+            ..IngestOptions::default()
+        },
+    )
+    .expect("second ingest");
+    assert!(!second.surprisal.is_empty());
+    for s in &second.surprisal {
+        assert!(s.result.excess_bits < 0.01, "identical batch: {:?}", s);
+    }
+    // Ranked descending.
+    for w in second.surprisal.windows(2) {
+        assert!(w[0].result.excess_bits >= w[1].result.excess_bits);
+    }
+
+    // Default: opt-out, no report.
+    let third = IngestionPipeline::ingest_file(
+        &mut db,
+        fixture.clone(),
+        &mapping,
+        IngestOptions::default(),
+    )
+    .expect("third ingest");
+    assert!(third.surprisal.is_empty());
 }
 
 #[test]
