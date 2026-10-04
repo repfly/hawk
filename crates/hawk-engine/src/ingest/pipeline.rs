@@ -18,8 +18,9 @@ use crate::ingest::schema_inference::{identity_mapping, infer_schema, InferConfi
 pub struct IngestOptions {
     pub batch_size: usize,
     pub show_progress: bool,
-    /// Score the ingested batch's data against the pre-batch stored model and
-    /// attach a surprisal report to the ingest result. Default off.
+    /// Score all rows in this ingest call against the model before the call.
+    /// `batch_size` does not change the baseline. New slices without a model
+    /// are skipped. Attach the report to the ingest result; default off.
     pub surprisal_report: bool,
 }
 

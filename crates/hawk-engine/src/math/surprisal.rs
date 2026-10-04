@@ -282,6 +282,41 @@ mod tests {
     }
 
     #[test]
+    fn both_empty_distributions_are_finite() {
+        for empty in [categorical(&[], &[], 0), histogram(0.0, 1.0, &[0, 0])] {
+            let report = surprisal(&empty, &empty).expect("empty surprisal");
+            assert_eq!(report.cross_entropy, 0.0);
+            assert_eq!(report.excess_bits, 0.0);
+            assert_eq!(report.unseen_mass, 0.0);
+            assert!(report.contributions.is_empty());
+        }
+    }
+
+    #[test]
+    fn disjoint_histograms_report_unseen_mass_and_consistent_contributions() {
+        let a = histogram(0.0, 1.0, &[3, 7]);
+        let b = histogram(1.0, 2.0, &[6, 4]);
+        let report = surprisal(&a, &b).expect("disjoint histograms");
+        assert_eq!(report.unseen_mass, 1.0);
+        assert!(report.cross_entropy.is_finite());
+        assert!(report.excess_bits > 10.0);
+        assert!(
+            (report.contributions.iter().map(|c| c.bits).sum::<f64>() - report.cross_entropy).abs()
+                < 1e-9
+        );
+        assert!(
+            (report
+                .contributions
+                .iter()
+                .map(|c| c.excess_bits)
+                .sum::<f64>()
+                - report.excess_bits)
+                .abs()
+                < 1e-9
+        );
+    }
+
+    #[test]
     fn type_mismatch_is_an_error() {
         let a = categorical(&["x"], &[5], 0);
         let b = histogram(0.0, 1.0, &[5]);

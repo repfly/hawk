@@ -19,7 +19,7 @@ built for B. Alongside it:
 |---|---|
 | `Cross-Entropy H(A,B)` | Bits per sample to encode A under B's model. |
 | `Total Bits` | Cross-entropy × A's sample count. |
-| `Excess Bits KL(A‖B)` | H(A,B) − H(A): the bits *wasted* by using B's model instead of A's own. Zero iff the distributions match. |
+| `Excess Bits KL(A‖B)` | H(A,B) − H(A): the bits *wasted* by using B's model instead of A's own. Approximately zero when the distributions match (the model is smoothed). |
 | `Entropy(A)` / `Entropy(B)` | A's own entropy and the baseline model entropy. |
 | `Unseen Mass` | Probability mass of A falling on buckets with zero count in B. |
 | `Top Surprises` | Per-category / per-bin contributions, ranked by excess bits. |
@@ -66,7 +66,9 @@ for s in &report.surprisal {
 ```
 
 The report is per updated `(variable, dimension slice)`, ranked by excess bits,
-and is not persisted. Slices with no pre-batch model are skipped. Default off.
+and is not persisted. One ingest call scores all arriving rows against the model
+from before that call; `batch_size` only controls internal write chunks. Slices
+with no pre-batch model, including a newly seen month, are skipped. Default off.
 
 ## Alerting
 
@@ -78,4 +80,9 @@ model.
 ALERT WHEN surprisal > 0.5 ON category FROM time:2025-01
 ```
 
-See `crates/hawk-engine/examples/surprise_scoring.rs` for a runnable demo.
+Run `cargo run -p hawk-engine --example surprise_scoring` for the checkpoint demo.
+It reads the existing small news fixture month by month, builds each new month's
+model, and replays that month's rows as a controlled stable follow-up batch.
+Those batches have approximately zero excess bits. A final batch with a corrupted
+category produces 100% unseen mass and a large spike; the example asserts both
+outcomes and prints the corresponding SURPRISE and ALERT queries.
